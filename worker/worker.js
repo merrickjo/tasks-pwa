@@ -124,7 +124,16 @@ export default {
       return new Response(null, { headers: corsHeaders(env) });
     }
 
-    if (request.headers.get("x-app-key") !== env.APP_KEY) {
+    const gotKey = request.headers.get("x-app-key") || "";
+    const envKey = env.APP_KEY || "";
+    console.log("auth check", {
+      gotLen: gotKey.length,
+      envLen: envKey.length,
+      match: gotKey === envKey,
+      envKeyIsSet: !!env.APP_KEY,
+    });
+
+    if (gotKey !== envKey) {
       return json({ error: "unauthorized" }, 401, env);
     }
 

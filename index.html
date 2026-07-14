@@ -28,12 +28,21 @@
   <div class="topbar">
     <div class="date" id="today-date"></div>
     <h1>Today <span class="count" id="task-count"></span></h1>
+    <div class="chips" id="area-chips"></div>
   </div>
   <div class="banner" id="offline-banner">offline — showing last synced view</div>
   <main id="list"></main>
   <div class="capture">
     <div class="capture-row">
       <input type="text" id="new-title" placeholder="Add a task">
+      <select id="new-area">
+        <option value="">Area</option>
+        <option value="Church">⛪</option>
+        <option value="Blibli">🛒</option>
+        <option value="Fitness">💪</option>
+        <option value="Family">👨‍👩‍👦</option>
+        <option value="Personal">●</option>
+      </select>
       <select id="new-priority">
         <option value="P2 - High">P2</option>
         <option value="P3 - Medium" selected>P3</option>

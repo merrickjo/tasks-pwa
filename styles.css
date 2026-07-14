@@ -56,6 +56,49 @@ body {
   letter-spacing: -0.01em;
 }
 
+/* --- area filter chips --- */
+.chips {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.chips::-webkit-scrollbar { display: none; }
+
+.chip {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.chip.active {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+
+/* per-Area accents */
+.a-church { --area-c: #7B5EA7; }
+.a-blibli { --area-c: #3A6EA5; }
+.a-fitness { --area-c: #4C7A5A; }
+.a-family { --area-c: #C07A3A; }
+.a-personal { --area-c: #6B6B66; }
+
+.tag.area {
+  color: var(--area-c, var(--ink-soft));
+  border-color: var(--area-c, var(--border));
+}
+
 .topbar .count {
   font-family: var(--font-mono);
   color: var(--ink-soft);

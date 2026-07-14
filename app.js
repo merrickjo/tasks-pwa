@@ -53,23 +53,68 @@ function todayISO() {
   const d = new Date();
   return d.toISOString().slice(0, 10);
 }
+// Notion can return full datetimes ("2026-07-19T00:00:00.000+07:00") — compare/display date part only
+function dueDate(due) {
+  return due ? due.slice(0, 10) : null;
+}
 function isOverdue(due) {
-  return due && due < todayISO();
+  const d = dueDate(due);
+  return d && d < todayISO();
 }
 function isToday(due) {
-  return due === todayISO();
+  return dueDate(due) === todayISO();
+}
+
+// --- area filter ---
+const AREAS = [
+  { name: "All", cls: "" },
+  { name: "Church", emoji: "⛪", cls: "a-church" },
+  { name: "Blibli", emoji: "🛒", cls: "a-blibli" },
+  { name: "Fitness", emoji: "💪", cls: "a-fitness" },
+  { name: "Family", emoji: "👨‍👩‍👦", cls: "a-family" },
+  { name: "Personal", emoji: "●", cls: "a-personal" },
+];
+const FILTER_KEY = "tasks-area-filter-v1";
+let activeArea = localStorage.getItem(FILTER_KEY) || "All";
+
+function renderChips() {
+  const wrap = document.getElementById("area-chips");
+  wrap.innerHTML = "";
+  AREAS.forEach((a) => {
+    const btn = document.createElement("button");
+    btn.className = "chip" + (activeArea === a.name ? " active" : "");
+    btn.textContent = a.name === "All" ? "All" : `${a.emoji} ${a.name}`;
+    btn.addEventListener("click", () => {
+      activeArea = a.name;
+      localStorage.setItem(FILTER_KEY, activeArea);
+      const sel = document.getElementById("new-area");
+      if (sel) sel.value = a.name === "All" ? "" : a.name;
+      renderChips();
+      render(sortTasks(getCache()));
+    });
+    wrap.appendChild(btn);
+  });
+}
+
+function areaCls(name) {
+  const a = AREAS.find((x) => x.name === name);
+  return a ? a.cls : "";
 }
 
 // --- rendering ---
-function render(tasks) {
+function render(allTasks) {
+  const tasks = activeArea === "All" ? allTasks : allTasks.filter((t) => t.area === activeArea);
   const list = document.getElementById("list");
-  document.getElementById("task-count").textContent = tasks.length ? `· ${tasks.length} open` : "";
+  const countText = activeArea === "All"
+    ? (tasks.length ? `· ${tasks.length} open` : "")
+    : `· ${tasks.length} of ${allTasks.length} open`;
+  document.getElementById("task-count").textContent = countText;
   document.getElementById("today-date").textContent = new Date().toLocaleDateString(undefined, {
     weekday: "long", month: "short", day: "numeric",
   });
 
   if (!tasks.length) {
-    list.innerHTML = `<div class="empty">Nothing open. Clean slate.</div>`;
+    list.innerHTML = `<div class="empty">${activeArea === "All" ? "Nothing open. Clean slate." : "Nothing open in " + activeArea + "."}</div>`;
     return;
   }
 
@@ -122,8 +167,16 @@ function renderRow(task) {
   if (task.due) {
     const dueTag = document.createElement("span");
     dueTag.className = "tag" + (isOverdue(task.due) ? " due-overdue" : "");
-    dueTag.textContent = task.due;
+    dueTag.textContent = dueDate(task.due);
     meta.appendChild(dueTag);
+  }
+
+  if (task.area) {
+    const areaTag = document.createElement("span");
+    areaTag.className = "tag area " + areaCls(task.area);
+    const a = AREAS.find((x) => x.name === task.area);
+    areaTag.textContent = a && a.emoji ? `${a.emoji} ${task.area}` : task.area;
+    meta.appendChild(areaTag);
   }
 
   if (task.label) {
@@ -169,12 +222,16 @@ async function addTask() {
   const title = titleEl.value.trim();
   if (!title) return;
   const priority = document.getElementById("new-priority").value;
+  const areaSel = document.getElementById("new-area");
+  const area = areaSel.value || (activeArea !== "All" ? activeArea : "");
   const btn = document.getElementById("new-add");
   btn.disabled = true;
   try {
+    const payload = { title, priority };
+    if (area) payload.area = area;
     const created = await apiFetch("/api/tasks", {
       method: "POST",
-      body: JSON.stringify({ title, priority }),
+      body: JSON.stringify(payload),
     });
     titleEl.value = "";
     const cached = [created, ...getCache()];
@@ -199,6 +256,9 @@ function sortTasks(tasks) {
 
 // --- boot ---
 async function boot() {
+  renderChips();
+  const areaSel = document.getElementById("new-area");
+  if (areaSel && activeArea !== "All") areaSel.value = activeArea;
   const cached = getCache();
   if (cached.length) render(sortTasks(cached));
 
