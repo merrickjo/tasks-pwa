@@ -1,0 +1,12 @@
+name = "tasks-proxy"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# Set the real value after your GitHub Pages URL exists:
+# [vars]
+# ALLOWED_ORIGIN = "https://yourusername.github.io"
+# DATA_SOURCE_ID = "38a78f87-f38b-43b7-9494-eda5cf171f68"
+
+# Secrets are NOT set here — run these once from the worker/ folder:
+#   wrangler secret put NOTION_TOKEN
+#   wrangler secret put APP_KEY

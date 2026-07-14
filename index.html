@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tasks</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#1A1A1A">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="setup" class="setup" style="display:none">
+  <h1>Connect</h1>
+  <p>One-time setup. Paste the Worker URL and app key from your deploy — see README.</p>
+  <label for="cfg-url">Worker URL</label>
+  <input id="cfg-url" type="text" placeholder="https://tasks-proxy.yourname.workers.dev" autocapitalize="off" autocorrect="off">
+  <label for="cfg-key">App key</label>
+  <input id="cfg-key" type="text" placeholder="shared secret" autocapitalize="off" autocorrect="off">
+  <button id="cfg-save">Connect</button>
+</div>
+
+<div id="app" style="display:none">
+  <div class="topbar">
+    <div class="date" id="today-date"></div>
+    <h1>Today <span class="count" id="task-count"></span></h1>
+  </div>
+  <div class="banner" id="offline-banner">offline — showing last synced view</div>
+  <main id="list"></main>
+  <div class="capture">
+    <div class="capture-row">
+      <input type="text" id="new-title" placeholder="Add a task">
+      <select id="new-priority">
+        <option value="P2 - High">P2</option>
+        <option value="P3 - Medium" selected>P3</option>
+        <option value="P4 - Low">P4</option>
+        <option value="P1 - Critical">P1</option>
+      </select>
+      <button id="new-add">+</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
