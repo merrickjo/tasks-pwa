@@ -431,7 +431,7 @@ function renderRow(task) {
 
   const body = document.createElement("div");
   body.className = "row-body";
-  body.addEventListener("click", () => openEditSheet(task));
+  body.addEventListener("click", () => openEditSheet(task, body));
 
   const title = document.createElement("div");
   title.className = "row-title";
@@ -607,20 +607,29 @@ let editingTask = null;   // the task currently open in the sheet, or null
 let editOriginal = null;  // pre-edit snapshot, for dirty-check + rollback
 let editDue = "";         // "" means no due date
 let editSaving = false;
+let editTriggerEl = null; // the row-body that opened the sheet — focus returns here on close
 
-function openEditSheet(task) {
+// Notion may return a full datetime ("...T09:00:00+07:00"); the sheet only
+// ever displays/edits the date part. editDue and every dirty/payload
+// comparison below run through dueDate() on both sides, so an untouched
+// Due field can never get flattened to date-only and shipped in a PATCH
+// that wasn't asked for — a Title-only edit must never touch Due.
+function openEditSheet(task, triggerEl) {
   editingTask = task;
   editOriginal = { ...task };
+  editTriggerEl = triggerEl || null;
   editDue = task.due ? dueDate(task.due) : "";
   document.getElementById("edit-title").value = task.title || "";
   document.getElementById("edit-priority").value = task.priority || "P3 - Medium";
   document.getElementById("edit-area").value = task.area || "";
-  document.getElementById("edit-sheet-msg").textContent = "";
   renderEditDueChips();
   editSaving = false;
+  showEditMsg("");
   updateSaveButton();
+  document.body.classList.add("sheet-open"); // lock background scroll while open
   document.getElementById("edit-backdrop").classList.add("show");
   document.getElementById("edit-sheet").classList.add("show");
+  document.getElementById("edit-title").focus();
 }
 
 function closeEditSheet() {
@@ -628,15 +637,39 @@ function closeEditSheet() {
   editOriginal = null;
   editDue = "";
   editSaving = false;
+  document.body.classList.remove("sheet-open");
   document.getElementById("edit-backdrop").classList.remove("show");
   document.getElementById("edit-sheet").classList.remove("show");
+  if (editTriggerEl && typeof editTriggerEl.focus === "function") editTriggerEl.focus();
+  editTriggerEl = null;
+}
+
+function showEditMsg(msg, isError) {
+  const el = document.getElementById("edit-sheet-msg");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.classList.toggle("error", !!isError);
+}
+
+// Trim, reject empty, cap at 200 — the same rule the Worker enforces
+// server-side (BUG-07's validateInput()). Checked client-side so a bad
+// title is a disabled button and an inline message, never a network
+// round-trip that comes back 400.
+function editTitleValidation() {
+  const raw = document.getElementById("edit-title").value;
+  const trimmed = raw.trim();
+  if (!trimmed) return { valid: false, trimmed, message: "Title can't be empty." };
+  if (trimmed.length > 200) return { valid: false, trimmed, message: "Title must be 200 characters or fewer." };
+  return { valid: true, trimmed, message: "" };
 }
 
 // Save stays disabled until something actually changed — a no-op edit
-// (open, look, close) must never call the Worker.
+// (open, look, close) must never call the Worker. Due is compared as
+// dueDate(editDue) vs. dueDate(originalTask.due) on both sides, so a
+// full Notion datetime the user never touched can't register as "dirty."
 function isEditDirty() {
   if (!editingTask) return false;
-  const title = document.getElementById("edit-title").value.trim();
+  const { trimmed: title } = editTitleValidation();
   const priority = document.getElementById("edit-priority").value;
   const area = document.getElementById("edit-area").value;
   const origDue = editOriginal.due ? dueDate(editOriginal.due) : "";
@@ -651,7 +684,11 @@ function isEditDirty() {
 function updateSaveButton() {
   const btn = document.getElementById("edit-save");
   if (!btn) return;
-  btn.disabled = editSaving || !isEditDirty();
+  const validation = editTitleValidation();
+  const dirty = isEditDirty();
+  btn.disabled = editSaving || !dirty || !validation.valid;
+  btn.textContent = editSaving ? "Saving…" : "Save";
+  if (!editSaving) showEditMsg(validation.valid ? "" : validation.message, true);
 }
 
 function renderEditDueChips() {
@@ -705,16 +742,47 @@ function requestCloseEditSheet() {
 document.getElementById("edit-cancel").addEventListener("click", requestCloseEditSheet);
 document.getElementById("edit-backdrop").addEventListener("click", requestCloseEditSheet);
 
+document.getElementById("edit-sheet").addEventListener("keydown", (e) => {
+  if (!editingTask) return;
+  if (e.key === "Escape") {
+    e.preventDefault();
+    requestCloseEditSheet();
+    return;
+  }
+  // Light Tab trap — keeps focus inside the sheet while it's open, per
+  // standard dialog behavior (role="dialog" aria-modal="true" in the markup).
+  if (e.key !== "Tab") return;
+  const items = Array.from(
+    document.getElementById("edit-sheet").querySelectorAll("input, select, button")
+  ).filter((el) => !el.disabled);
+  if (!items.length) return;
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+});
+
+// Swipe-to-dismiss only starts from the drag handle — never from the sheet
+// body, where the same gesture would collide with internal scrolling,
+// native <select> menus, the native date picker, or a scroll while the
+// keyboard is open. The handle is a small, inert 36x4px strip with no
+// interactive children, so there's nothing else it could steal a gesture
+// from.
 (function initEditSwipe() {
-  const sheet = document.getElementById("edit-sheet");
-  if (!sheet) return;
+  const handle = document.getElementById("edit-sheet-handle");
+  if (!handle) return;
   let startY = null;
-  sheet.addEventListener("touchstart", (e) => { startY = e.touches[0].clientY; }, { passive: true });
-  sheet.addEventListener("touchend", (e) => {
+  handle.addEventListener("touchstart", (e) => { startY = e.touches[0].clientY; }, { passive: true });
+  handle.addEventListener("touchend", (e) => {
     if (startY === null) return;
     const dy = e.changedTouches[0].clientY - startY;
     startY = null;
-    if (dy > 80) requestCloseEditSheet(); // swipe-down beyond threshold
+    if (dy > 70) requestCloseEditSheet(); // swipe-down beyond threshold
   }, { passive: true });
 })();
 
@@ -730,13 +798,21 @@ function showToast(msg) {
   }, 2200);
 }
 
+// Confirm-then-render: nothing changes in the cache, the list, or the sheet
+// until the Worker confirms the write. An explicit Save doesn't get the
+// benefit of the doubt the way completeTask()'s fire-and-fade does — a task
+// disappearing from its view before Notion has actually agreed to the edit
+// recreates the exact "did it save or vanish?" problem 1.5 already fixed
+// once for due-chip quick-add.
 async function saveEdit() {
-  if (!editingTask || editSaving || !isEditDirty()) return;
+  if (!editingTask || editSaving) return;
+  const validation = editTitleValidation();
+  if (!validation.valid) { showEditMsg(validation.message, true); return; }
+  if (!isEditDirty()) return;
+
   const task = editingTask;
   const before = { ...editOriginal };
-
-  const title = document.getElementById("edit-title").value.trim();
-  if (!title) return;
+  const title = validation.trimmed;
   const priority = document.getElementById("edit-priority").value;
   const area = document.getElementById("edit-area").value;
   const due = editDue;
@@ -744,7 +820,9 @@ async function saveEdit() {
 
   // Exactly one PATCH, containing only the fields that actually changed —
   // acceptance check 2. Cleared Due/Area go through as explicit null
-  // (Worker v4.1 already supports both — acceptance check 3).
+  // (Worker v4.1 already supports both — acceptance check 3). An untouched
+  // Due on a full-datetime task never lands here: due === origDue because
+  // both sides went through dueDate().
   const payload = {};
   if (title !== (before.title || "")) payload.title = title;
   if (priority !== (before.priority || "")) payload.priority = priority;
@@ -754,57 +832,41 @@ async function saveEdit() {
 
   editSaving = true;
   updateSaveButton();
-
-  const optimistic = { ...before, ...payload, due: payload.due === null ? null : (payload.due || before.due) };
-  const wasInView = viewTasks([before], activeView).length > 0;
-  const stillInView = viewTasks([optimistic], activeView).length > 0;
-
-  const prev = captureRects();
-  let cached = getCache().map((t) => (t.id === task.id ? optimistic : t));
-  setCache(cached);
-  let all = sortTasks(cached);
-  renderChips(all);
-  render(all);
-  playFlip(prev);
-  closeEditSheet();
-
-  // 1.5 fixed silent disappearance once already — a task leaving the active
-  // view on a manual edit gets the same explicit confirmation, not silence.
-  if (wasInView && !stillInView) {
-    showToast(`Saved · moved out of ${getView(activeView).label}`);
-  }
+  showEditMsg("Saving…", false);
 
   try {
+    // The cache is updated from the Worker's response, not from the local
+    // draft — if Notion's write normalizes anything, the server's version
+    // wins over what the sheet optimistically assumed.
     const updated = await apiFetch(`/api/tasks/${task.id}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     });
-    cached = getCache().map((t) => (t.id === task.id ? updated : t));
-    setCache(cached);
-    all = sortTasks(cached);
-    renderChips(all);
-    render(all);
-  } catch (e) {
-    // Rollback the full pre-edit task and reopen the sheet with the user's
-    // edits intact — nothing the user typed is lost on a failed save.
-    cached = getCache().map((t) => (t.id === task.id ? before : t));
-    setCache(cached);
-    all = sortTasks(cached);
-    renderChips(all);
-    render(all);
 
-    editingTask = task;
-    editOriginal = before;
-    editDue = due;
-    document.getElementById("edit-title").value = title;
-    document.getElementById("edit-priority").value = priority;
-    document.getElementById("edit-area").value = area;
-    renderEditDueChips();
-    document.getElementById("edit-sheet-msg").textContent = "Couldn't save — try again.";
-    document.getElementById("edit-backdrop").classList.add("show");
-    document.getElementById("edit-sheet").classList.add("show");
+    const wasInView = viewTasks([before], activeView).length > 0;
+    const stillInView = viewTasks([updated], activeView).length > 0;
+
+    const cached = getCache().map((t) => (t.id === task.id ? updated : t));
+    setCache(cached);
+    const prev = captureRects();
+    const all = sortTasks(cached);
+    renderChips(all);
+    render(all);
+    playFlip(prev);
+    closeEditSheet();
+
+    // 1.5 fixed silent disappearance once already — a task leaving the
+    // active view on a manual edit gets the same explicit confirmation.
+    if (wasInView && !stillInView) {
+      showToast(`Saved · moved out of ${getView(activeView).label}`);
+    }
+  } catch (e) {
+    // Nothing was touched — cache, list, and sheet are exactly as they
+    // were before Save was pressed. Just surface the failure and let the
+    // user retry or dismiss.
     editSaving = false;
-    updateSaveButton();
+    updateSaveButton(); // recomputes disabled state and its own message first —
+    showEditMsg("Couldn't save — try again.", true); // this write must be the last one, or the failure text gets clobbered
   }
 }
 document.getElementById("edit-save").addEventListener("click", saveEdit);
