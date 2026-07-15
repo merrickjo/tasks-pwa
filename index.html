@@ -36,6 +36,9 @@
     <div class="chips" id="view-chips"></div>
   </div>
   <div class="banner" id="offline-banner">offline — showing last synced view</div>
+  <!-- Phase 3: mandate strip. app.js owns all content/visibility here
+       (renderConcursusStrip()); hidden until a roll exists for today. -->
+  <div id="concursus-strip" class="concursus-strip" role="button" tabindex="0" aria-label="Open CONCURSUS"></div>
   <main id="list"></main>
   <div class="capture">
     <div class="capture-due" id="new-due-chips">
