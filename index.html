@@ -11,6 +11,12 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#1A1A1A">
 <link rel="stylesheet" href="styles.css">
+<!-- Signature Lock typography: self-hosted only (Phase 0 req 11 forbids
+     runtime font requests), so no Google Fonts link tag here on purpose.
+     Playfair Display / Roboto Slab woff2 files need to be added under
+     slash fonts slash with font-face rules in styles.css before this is
+     visually complete. Until then the nk-serif and nk-slab tokens fall
+     back to Lora / Zilla Slab / system serif, a real tracked gap. -->
 </head>
 <body>
 
@@ -106,6 +112,21 @@
   </div>
 </div>
 
+<!-- CONCURSUS view — charcoal mode surface. Hidden with the same
+     display:none/block pairing as #setup/#app; app.js's tab router owns
+     showing/hiding this once #app is active. -->
+<main id="concursus-view" style="display:none"></main>
+
+<!-- Bottom navigation — Navigation spec: flat floating bar, mode inversion.
+     Text-only at 2 tabs per the decided scaling rule. app.js owns all
+     routing logic (setActiveTab, click handlers, keyboard-hide behavior);
+     this markup is the only thing index.html owns for CONCURSUS. -->
+<nav class="tabbar" id="tabbar" style="display:none">
+  <button class="tab-btn active" data-tab="tasks" role="tab" aria-selected="true">TASKS</button>
+  <button class="tab-btn" data-tab="concursus" role="tab" aria-selected="false">CONCURSUS</button>
+</nav>
+
 <script src="app.js"></script>
+<script src="concursus.js"></script>
 </body>
 </html>

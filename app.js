@@ -43,6 +43,7 @@ function showSetup() {
 function showApp() {
   document.getElementById("setup").style.display = "none";
   document.getElementById("app").style.display = "block";
+  document.getElementById("tabbar").style.display = "flex";
 }
 
 document.getElementById("cfg-save").addEventListener("click", () => {
@@ -52,6 +53,7 @@ document.getElementById("cfg-save").addEventListener("click", () => {
   setConfig({ url, key });
   showApp();
   boot();
+  initTabRouter();
 });
 
 // --- date helpers ---
@@ -935,6 +937,66 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
+// --- tab router (Phase 1 req 5/6) ---
+// app.js owns setActiveTab for both "tasks" and "concursus"; index.html
+// owns only the <nav id="tabbar"> and #concursus-view markup, concursus.js
+// owns nothing about routing. Cold launch defaults to Tasks unless a valid
+// tab is recorded for the current session (sessionStorage, not localStorage
+// — a fresh app open should default back to Tasks).
+const TAB_SESSION_KEY = "app-tab-v1";
+const VALID_TABS = ["tasks", "concursus"];
+
+function setActiveTab(tab) {
+  if (!VALID_TABS.includes(tab)) return;
+  const appEl = document.getElementById("app");
+  const ccEl = document.getElementById("concursus-view");
+  const tabbarEl = document.getElementById("tabbar");
+
+  tabbarEl.querySelectorAll(".tab-btn").forEach((btn) => {
+    const isActive = btn.dataset.tab === tab;
+    btn.classList.toggle("active", isActive);
+    btn.setAttribute("aria-selected", String(isActive));
+  });
+  document.body.classList.toggle("concursus-active", tab === "concursus");
+  appEl.style.display = tab === "tasks" ? "block" : "none";
+  ccEl.style.display = tab === "concursus" ? "block" : "none";
+
+  try { sessionStorage.setItem(TAB_SESSION_KEY, tab); } catch { /* non-fatal */ }
+
+  if (tab === "concursus") {
+    CONCURSUS.init(ccEl); // idempotent — safe to call on every switch
+  } else {
+    // "Returning to Tasks triggers one Tasks render" (Phase 1 req 5) —
+    // reuse the same cache-driven re-render the visibilitychange handler
+    // already uses, not a network refetch.
+    const all = sortTasks(getCache());
+    renderChips(all);
+    render(all);
+  }
+}
+
+document.getElementById("tabbar").querySelectorAll(".tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
+});
+
+function initTabRouter() {
+  let initialTab = "tasks";
+  try {
+    const stored = sessionStorage.getItem(TAB_SESSION_KEY);
+    if (VALID_TABS.includes(stored)) initialTab = stored;
+  } catch { /* default to tasks */ }
+  setActiveTab(initialTab);
+}
+
+// Nav spec: hide the bar (and let capture ride alone) while the keyboard is
+// up. body.keyboard-open is what styles.css keys off of for both rules.
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", () => {
+    const keyboardUp = window.visualViewport.height < window.innerHeight * 0.75;
+    document.body.classList.toggle("keyboard-open", keyboardUp);
+  });
+}
+
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
 }
@@ -945,4 +1007,9 @@ if (!cfg || !cfg.url || !cfg.key) {
 } else {
   showApp();
   boot();
+  // Deferred: concursus.js (loaded as the next <script> tag) must finish
+  // executing before initTabRouter() can safely call CONCURSUS.init() if
+  // the remembered tab is "concursus". DOMContentLoaded fires only after
+  // every synchronous script in the document has run.
+  document.addEventListener("DOMContentLoaded", initTabRouter);
 }
