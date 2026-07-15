@@ -648,3 +648,285 @@ body.sheet-open { overflow: hidden; }
     --border: #33322D;
   }
 }
+
+/* ===================================================================
+   CONCURSUS integration — Phase 1/2 (Signature Lock)
+   Variable-driven capture/nav stack per the revised graft decision:
+   never hardcode pixel offsets carried over from the archived snapshot.
+   --nk-tabbar-h and --capture-h below are first-pass values derived from
+   this file's own existing rules (see comments), NOT copied from the
+   roadmap doc. They are placeholders pending Merrick's on-device 375px
+   measurement (Phase 0 blocker 1) — update both variables from real
+   DevTools/PWA measurements before merging, do not ship as-is.
+   =================================================================== */
+:root {
+  --nk-cream: #F5F1E8;
+  --nk-coral: #E86441;
+  --nk-charcoal: #2C2C2C;
+  --nk-teal: #4A6B5C;
+  --nk-tan: #C9B89A;
+  --nk-serif: "Playfair Display", "Lora", serif;
+  --nk-slab: "Roboto Slab", "Zilla Slab", serif;
+
+  /* Floating nav bar: inset 12px each side, content height derived from
+     12px+10px label padding + ~16px line height + 2px border ≈ 40px.
+     PLACEHOLDER — confirm against the real rendered bar on-device. */
+  --nk-tabbar-inset: 12px;
+  --nk-tabbar-h: 40px;
+
+  /* Capture bar's own content height. This app's existing `main {
+     padding-bottom: 96px }` rule already implies today's capture height
+     (no nav) is ~96px including safe-area slack — reusing that as the
+     starting point rather than the doc's invented 170px. Still a
+     PLACEHOLDER: re-derive once due-chip row wraps/measures for real at
+     320–390px, and re-check whenever capture's own markup changes. */
+  --capture-h: 96px;
+}
+
+/* --- bottom navigation: flat floating bar, mode inversion, no elevation --- */
+.tabbar {
+  position: fixed;
+  left: var(--nk-tabbar-inset);
+  right: var(--nk-tabbar-inset);
+  bottom: calc(var(--nk-tabbar-inset) + env(safe-area-inset-bottom));
+  z-index: 20;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--nk-charcoal); /* cream (Tasks) tab -> charcoal bar */
+  transition: transform 0.15s ease;
+}
+body.concursus-active .tabbar {
+  background: var(--nk-cream); /* charcoal (CONCURSUS) tab -> cream bar */
+}
+/* Nav spec: hide the bar while the keyboard is up so capture rides the
+   keyboard alone (app.js toggles this class from a visualViewport listener). */
+body.keyboard-open .tabbar { display: none; }
+
+.tab-btn {
+  flex: 1;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  font-family: var(--nk-slab);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  padding: 12px 0 10px;
+  color: var(--nk-cream);
+  opacity: 0.55;
+  cursor: pointer;
+}
+body.concursus-active .tab-btn { color: var(--nk-charcoal); }
+.tab-btn.active {
+  opacity: 1;
+  color: var(--nk-coral);
+  border-bottom-color: var(--nk-coral); /* thin coral rule — the only permitted accent element */
+}
+
+/* --- capture bar: docked above the floating nav, variable-driven --- */
+/* Overrides the base `.capture { bottom: 0 }` rule above — this is the
+   graft-time change flagged in Phase 0: capture no longer sits flush to
+   the viewport edge, it stacks above the nav bar with the same inset. */
+.capture {
+  bottom: calc(var(--nk-tabbar-inset) + var(--nk-tabbar-h) + var(--nk-tabbar-inset) + env(safe-area-inset-bottom));
+}
+body.keyboard-open .capture { bottom: 0; } /* capture alone follows the keyboard */
+
+main {
+  padding-bottom: calc(var(--capture-h) + var(--nk-tabbar-inset) + var(--nk-tabbar-h) + var(--nk-tabbar-inset) + env(safe-area-inset-bottom));
+}
+
+/* ===== CONCURSUS tab — charcoal mode, flat, rule lines only ===== */
+#concursus-view {
+  min-height: 100dvh;
+  background: var(--nk-charcoal);
+  color: var(--nk-cream);
+  font-family: var(--nk-slab);
+  padding: 24px 20px calc(var(--capture-h) + var(--nk-tabbar-inset) + var(--nk-tabbar-h) + var(--nk-tabbar-inset) + env(safe-area-inset-bottom));
+}
+.cc-kicker {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nk-tan);
+}
+.cc-title {
+  font-family: var(--nk-serif);
+  font-weight: 700;
+  font-size: 30px;
+  margin: 2px 0 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--nk-tan);
+}
+.cc-ungoverned { font-size: 14px; font-style: italic; opacity: 0.8; }
+.cc-roll-btn {
+  display: block;
+  width: 100%;
+  margin: 18px 0 10px;
+  padding: 16px;
+  border: 1px solid var(--nk-coral);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--nk-coral);
+  font-family: var(--nk-slab);
+  font-size: 14px;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+.cc-manual-row { display: flex; gap: 8px; margin-top: 8px; }
+.cc-manual-input {
+  flex: 1;
+  background: transparent;
+  border: 1px solid rgba(245, 241, 232, 0.25);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--nk-cream);
+  font-family: var(--nk-slab);
+  font-size: 14px;
+}
+.cc-manual-btn {
+  border: 1px solid rgba(245, 241, 232, 0.25);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--nk-cream);
+  font-family: var(--nk-slab);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  padding: 0 16px;
+  cursor: pointer;
+}
+.cc-manual-error {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--nk-coral);
+}
+.cc-roll-line { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
+.cc-roll-num { font-family: var(--nk-serif); font-size: 22px; font-weight: 700; }
+.cc-roll-count { font-size: 13px; color: var(--nk-tan); }
+.cc-reroll {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: rgba(245, 241, 232, 0.45);
+  font-family: var(--nk-slab);
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+/* CARPE badge: flat coral border — no glow, per the Signature Lock */
+.cc-carpe {
+  border: 1px solid var(--nk-coral);
+  border-radius: 8px;
+  color: var(--nk-coral);
+  font-family: var(--nk-slab);
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-align: center;
+  padding: 12px;
+  margin-bottom: 14px;
+}
+.cc-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid rgba(245, 241, 232, 0.2);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  color: var(--nk-cream);
+  cursor: pointer;
+}
+.cc-card.done { border-color: var(--nk-teal); }
+.cc-card-top { display: flex; justify-content: space-between; margin-bottom: 6px; }
+.cc-card-domain {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nk-tan);
+}
+.cc-card-check { font-size: 11px; letter-spacing: 0.1em; color: rgba(245, 241, 232, 0.4); }
+.cc-card.done .cc-card-check { color: var(--nk-teal); }
+.cc-card-name { font-family: var(--nk-serif); font-size: 18px; font-weight: 500; }
+.cc-card-detail { font-size: 13px; font-weight: 300; margin-top: 4px; line-height: 1.5; opacity: 0.85; }
+.cc-card-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--nk-coral);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  border-bottom: 1px solid var(--nk-coral);
+}
+.cc-nonneg {
+  margin-top: 20px;
+  border: 1px solid rgba(245, 241, 232, 0.2);
+  border-radius: 8px;
+}
+.cc-nonneg-summary {
+  padding: 14px 16px;
+  color: var(--nk-coral);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+.cc-nonneg-list { border-top: 1px solid rgba(245, 241, 232, 0.2); }
+.cc-nonneg-item {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(245, 241, 232, 0.12);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.cc-nonneg-item:last-child { border-bottom: 0; }
+.cc-nonneg-label { color: var(--nk-tan); }
+.cc-nonneg-text { opacity: 0.8; }
+.cc-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(44, 44, 44, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.cc-overlay-panel {
+  background: var(--nk-cream);
+  color: var(--nk-charcoal);
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 340px;
+  font-family: var(--nk-slab);
+}
+.cc-overlay-title { font-family: var(--nk-serif); font-size: 20px; margin: 0 0 8px; }
+.cc-overlay-body { font-size: 13.5px; line-height: 1.6; margin: 0 0 18px; }
+.cc-overlay-confirm {
+  width: 100%;
+  padding: 13px;
+  border: 1px solid var(--nk-coral);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--nk-coral);
+  font-family: var(--nk-slab);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+.cc-overlay-confirm:disabled { opacity: 0.4; cursor: default; }
+.cc-overlay-cancel {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--nk-charcoal);
+  color: var(--nk-cream);
+  font-family: var(--nk-slab);
+  font-size: 13px;
+  cursor: pointer;
+}
