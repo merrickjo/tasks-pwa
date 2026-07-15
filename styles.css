@@ -650,6 +650,53 @@ body.sheet-open { overflow: hidden; }
 }
 
 /* ===================================================================
+   Signature Lock typography — self-hosted, no runtime font request
+   (Phase 0 req 11). Files under ./fonts/, sourced from the SIL OFL
+   Playfair Display and Apache-2.0 Roboto Slab projects (license text
+   alongside them as LICENSE-*.txt). Weights match what the roadmap's
+   original Google Fonts link specified: Playfair Display 500/700,
+   Roboto Slab 300/400/600. font-display:swap so first paint isn't
+   blocked on font load; --nk-serif/--nk-slab already declare the
+   Lora/Zilla Slab/system-serif fallback chain for the gap before
+   these load.
+   =================================================================== */
+@font-face {
+  font-family: "Playfair Display";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/playfair-display-latin-500-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Playfair Display";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/playfair-display-latin-700-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Roboto Slab";
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url("./fonts/roboto-slab-latin-300-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Roboto Slab";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/roboto-slab-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Roboto Slab";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./fonts/roboto-slab-latin-600-normal.woff2") format("woff2");
+}
+
+/* ===================================================================
    CONCURSUS integration — Phase 1/2 (Signature Lock)
    Variable-driven capture/nav stack per the revised graft decision:
    never hardcode pixel offsets carried over from the archived snapshot.
