@@ -3,12 +3,16 @@
 // keeps its own localStorage snapshot so offline behavior stays predictable.
 
 // v11 -> v12: added concursus.js (Phase 1 CONCURSUS tab port) and the
-// five self-hosted Signature Lock font files (Phase 0 req 11 forbids the
-// runtime Google Fonts request the roadmap doc's graft block used, so
-// these are precached here instead of ever being fetched at runtime).
-// Still v12, not a further bump -- this branch hasn't shipped yet, so
-// there's no deployed v12 shell to migrate away from.
-const CACHE_NAME = "tasks-shell-v12";
+// five self-hosted Signature Lock font files.
+// v12 -> v13: Phase 3 (roll-to-Tasks projection). No new files in SHELL --
+// this is a real bump anyway, not a formality: it rewrites the CONTENTS of
+// app.js, concursus.js, styles.css, and index.html, all of which were
+// already shelled under v12. Without a new CACHE_NAME, this sw.js file
+// would be byte-identical to the v12 one, the browser would never detect
+// an update, and a phone that already installed v12 during Phase 1
+// on-device testing would keep serving the stale pre-Phase-3 shell
+// indefinitely.
+const CACHE_NAME = "tasks-shell-v13";
 const SHELL = [
   "./",
   "./index.html",
