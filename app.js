@@ -234,13 +234,12 @@ function syncQuickAddDue() {
   quickAddDue = viewDefaultDue(activeView);
   renderDueChips();
 }
-// FIX v3 (15 Jul): the calendar chip is now a <label> wrapping the real
-// <input type="date"> (see index.html + styles.css) rather than a <button>
-// that scripts .showPicker()/.click() — iOS WebKit unreliably honors that
-// programmatic call on an off-screen input. The label gets no data-due
-// attribute, so the click-listener loop below (which only targets chips
-// with one) naturally skips it; opening the picker is just the browser's
-// native label-for-input behavior now, no JS needed for that part.
+// FIX v4 (15 Jul): three attempts at disguising/hiding the native iOS date
+// control (off-screen input, transparent overlay-on-label) were all
+// unreliable on iOS WebKit/Brave — the browser can silently refuse to open
+// a picker it doesn't consider a genuine, visible tap target. #new-due-custom
+// is now a plain, visible <input type="date"> — no hiding, no overlay, no
+// showPicker()/.click() script anywhere. The user taps the real control.
 function renderDueChips() {
   const wrap = document.getElementById("new-due-chips");
   if (!wrap) return;
@@ -251,12 +250,11 @@ function renderDueChips() {
     const val = kind === "today" ? t : kind === "tomorrow" ? tm : "";
     btn.classList.toggle("active", quickAddDue === val);
   });
-  const calChip = document.getElementById("due-custom-chip");
-  const calLabel = document.getElementById("due-custom-label");
-  if (calChip && calLabel) {
+  const customInput = document.getElementById("new-due-custom");
+  if (customInput) {
     const isCustom = quickAddDue && quickAddDue !== t && quickAddDue !== tm;
-    calChip.classList.toggle("active", !!isCustom);
-    calLabel.textContent = isCustom ? quickAddDue.slice(5) : "📅"; // MM-DD when custom
+    customInput.classList.toggle("active", !!isCustom);
+    if (!isCustom) customInput.value = ""; // clear the visible field when a fixed chip wins
   }
 }
 document.querySelectorAll(".due-chip[data-due]").forEach((btn) => {

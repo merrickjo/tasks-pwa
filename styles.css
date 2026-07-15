@@ -340,41 +340,52 @@ main {
   color: var(--bg);
   border-color: var(--ink);
 }
-/* FIX v3 (post-ship, 15 Jul): iOS WebKit (including Brave) unreliably
-   honors showPicker()/programmatic .click() on an off-screen date input —
-   it can silently no-op. The fix isn't hiding the input at all; it's an
-   overlay: the real <input type="date"> sits transparently on top of the
-   visible chip (a <label>, so a tap anywhere on the label focuses the
-   input — genuine user activation, not a script call), sized to match via
-   position:absolute + inset:0. The emoji/label underneath is just visual;
-   the actual tap target is the invisible native control. */
-.due-chip-calendar {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  cursor: pointer;
-}
-#new-due-custom {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+/* FIX v4 (post-ship, 15 Jul): both the off-screen input (v3a) and the
+   invisible-overlay-on-a-label input (v3b) failed on iOS WebKit/Brave —
+   the browser refuses to reliably open a picker for a transparent or
+   off-screen date control, disguised or not. Three attempts at hiding
+   a native iOS date control cost more than the feature is worth right
+   now. This is a real, visible native date input — plain, not pretty,
+   but it can't silently fail to open because there's nothing to fail:
+   the user taps the actual control they can see. */
+.capture-due .due-date-native {
+  position: static;
+  display: block;
+  flex: 0 0 118px;
+  width: 118px;
+  min-width: 118px;
+  height: 34px;
   margin: 0;
-  opacity: 0;
-  cursor: pointer;
+  padding: 4px 6px;
+  opacity: 1;
   pointer-events: auto;
-  appearance: none;
-  -webkit-appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  -webkit-appearance: auto;
+  appearance: auto;
 }
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
+.due-date-native.active {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+/* TEMP (15 Jul) — proves the user is tapping the real control, not a
+   stale cached shell. Remove once v8 is confirmed opening the picker. */
+.due-date-native {
+  outline: 2px solid red !important;
+  z-index: 100 !important;
+}
+
+/* TEMP (15 Jul) — same purpose: removes ambiguity about which shell
+   version is actually loaded. Remove alongside the outline above. */
+#build-stamp {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--red);
+  padding: 2px 20px 0;
 }
 
 .capture-row {

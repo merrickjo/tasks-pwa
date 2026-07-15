@@ -30,6 +30,10 @@
     <h1><span id="view-title">All</span> <span class="count" id="task-count"></span></h1>
     <div class="chips" id="view-chips"></div>
   </div>
+  <!-- TEMP build stamp — remove once v8 is confirmed live on-device; exists
+       only to remove ambiguity about whether a stale cached shell is
+       still being served after this deploy. -->
+  <div id="build-stamp">build v8</div>
   <div class="banner" id="offline-banner">offline — showing last synced view</div>
   <main id="list"></main>
   <div class="capture">
@@ -37,11 +41,7 @@
       <button type="button" class="due-chip active" data-due="none">—</button>
       <button type="button" class="due-chip" data-due="today">Today</button>
       <button type="button" class="due-chip" data-due="tomorrow">Tmrw</button>
-      <label class="due-chip due-chip-calendar" id="due-custom-chip">
-        <span aria-hidden="true" id="due-custom-label">📅</span>
-        <span class="sr-only">Choose custom date</span>
-        <input id="new-due-custom" type="date" aria-label="Choose custom due date">
-      </label>
+      <input id="new-due-custom" class="due-date-native" type="date" aria-label="Choose custom due date">
     </div>
     <div class="capture-row">
       <input type="text" id="new-title" placeholder="Add a task">
