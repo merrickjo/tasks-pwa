@@ -493,6 +493,146 @@ main {
   cursor: pointer;
 }
 
+/* --- edit sheet (backlog 1.6): tap a row body to reschedule/retag it.
+   Half-height bottom sheet over a dimming backdrop — same fixed-to-viewport
+   pattern as .capture, just above it in stacking order. Save is the sheet's
+   only coral element (3.1 restraint); Cancel/backdrop/swipe stay neutral. */
+.edit-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.edit-backdrop.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.edit-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 21;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-radius: 16px 16px 0 0;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(100%);
+  transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.16);
+}
+.edit-sheet.show { transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) {
+  .edit-sheet, .edit-backdrop { transition: none; }
+}
+
+.edit-sheet-handle {
+  flex: none;
+  width: 36px;
+  height: 4px;
+  margin: 10px auto 4px;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.edit-sheet-body {
+  overflow-y: auto;
+  padding: 8px 20px calc(20px + env(safe-area-inset-bottom));
+}
+
+.edit-title-input {
+  width: 100%;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 11px 12px;
+  font-size: 16px;
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--ink);
+}
+.edit-title-input:focus { outline: none; border-color: var(--ink); }
+
+.edit-field-label {
+  margin-bottom: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+#edit-due-chips { margin-bottom: 14px; }
+
+.edit-select {
+  width: 100%;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 11px 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.edit-sheet-msg {
+  min-height: 16px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--red);
+}
+
+.edit-sheet-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+.edit-btn {
+  flex: 1;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 15px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink);
+}
+.edit-btn-save {
+  border: none;
+  background: var(--red);
+  color: #fff;
+}
+.edit-btn-save:disabled { opacity: 0.4; cursor: default; }
+
+.row-body { cursor: pointer; }
+
+/* movement feedback toast ("Saved · moved out of Workday") */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(100px + env(safe-area-inset-bottom));
+  z-index: 30;
+  transform: translate(-50%, 8px);
+  background: var(--ink);
+  color: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  white-space: nowrap;
+  padding: 9px 16px;
+  border-radius: 999px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #161614;

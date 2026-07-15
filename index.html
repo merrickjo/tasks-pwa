@@ -61,6 +61,49 @@
       <button id="new-add">+</button>
     </div>
   </div>
+
+  <div id="edit-backdrop" class="edit-backdrop"></div>
+  <div id="edit-sheet" class="edit-sheet" role="dialog" aria-modal="true" aria-label="Edit task">
+    <div class="edit-sheet-handle"></div>
+    <div class="edit-sheet-body">
+      <input type="text" id="edit-title" class="edit-title-input" placeholder="Task title">
+
+      <div class="edit-field-label">Due</div>
+      <div class="capture-due" id="edit-due-chips">
+        <button type="button" class="due-chip" data-due="none">—</button>
+        <button type="button" class="due-chip" data-due="today">Today</button>
+        <button type="button" class="due-chip" data-due="tomorrow">Tmrw</button>
+        <div class="due-date-wrap">
+          <input id="edit-due-custom" class="due-date-native" type="date" aria-label="Choose custom due date">
+          <span class="due-date-placeholder" id="edit-due-placeholder" aria-hidden="true">Date</span>
+        </div>
+      </div>
+
+      <div class="edit-field-label">Priority</div>
+      <select id="edit-priority" class="edit-select">
+        <option value="P1 - Critical">P1</option>
+        <option value="P2 - High">P2</option>
+        <option value="P3 - Medium">P3</option>
+        <option value="P4 - Low">P4</option>
+      </select>
+
+      <div class="edit-field-label">Area</div>
+      <select id="edit-area" class="edit-select">
+        <option value="">No area</option>
+        <option value="Church">⛪ Church</option>
+        <option value="Blibli">🛒 Blibli</option>
+        <option value="Fitness">💪 Fitness</option>
+        <option value="Family">👨‍👩‍👦 Family</option>
+        <option value="Personal">● Personal</option>
+      </select>
+
+      <div class="edit-sheet-msg" id="edit-sheet-msg"></div>
+      <div class="edit-sheet-actions">
+        <button type="button" id="edit-cancel" class="edit-btn edit-btn-cancel">Cancel</button>
+        <button type="button" id="edit-save" class="edit-btn edit-btn-save" disabled>Save</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="app.js"></script>

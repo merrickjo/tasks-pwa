@@ -422,10 +422,16 @@ function renderRow(task) {
   check.className = "check";
   check.setAttribute("aria-label", "Mark done");
   check.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="4,13 9,18 20,6"/></svg>`;
-  check.addEventListener("click", () => completeTask(task, row, check));
+  // 1.6: checkbox stays completion-only — stopPropagation so a tap here
+  // never bubbles to the row body's click-to-edit listener below.
+  check.addEventListener("click", (e) => {
+    e.stopPropagation();
+    completeTask(task, row, check);
+  });
 
   const body = document.createElement("div");
   body.className = "row-body";
+  body.addEventListener("click", () => openEditSheet(task));
 
   const title = document.createElement("div");
   title.className = "row-title";
@@ -591,6 +597,217 @@ function sortTasks(tasks) {
     return (a.title || "").localeCompare(b.title || "");
   });
 }
+
+// --- edit sheet (backlog 1.6): tap a row body to reschedule/retag it ---
+// Title · Due · Priority · Area all ship in v1. Due reuses 1.5's working
+// pattern verbatim (— / Today / Tmrw chips + a plain visible native date
+// input) but keeps its own state (editDue) — the quick-add row's state
+// must not leak into an open edit, and vice versa.
+let editingTask = null;   // the task currently open in the sheet, or null
+let editOriginal = null;  // pre-edit snapshot, for dirty-check + rollback
+let editDue = "";         // "" means no due date
+let editSaving = false;
+
+function openEditSheet(task) {
+  editingTask = task;
+  editOriginal = { ...task };
+  editDue = task.due ? dueDate(task.due) : "";
+  document.getElementById("edit-title").value = task.title || "";
+  document.getElementById("edit-priority").value = task.priority || "P3 - Medium";
+  document.getElementById("edit-area").value = task.area || "";
+  document.getElementById("edit-sheet-msg").textContent = "";
+  renderEditDueChips();
+  editSaving = false;
+  updateSaveButton();
+  document.getElementById("edit-backdrop").classList.add("show");
+  document.getElementById("edit-sheet").classList.add("show");
+}
+
+function closeEditSheet() {
+  editingTask = null;
+  editOriginal = null;
+  editDue = "";
+  editSaving = false;
+  document.getElementById("edit-backdrop").classList.remove("show");
+  document.getElementById("edit-sheet").classList.remove("show");
+}
+
+// Save stays disabled until something actually changed — a no-op edit
+// (open, look, close) must never call the Worker.
+function isEditDirty() {
+  if (!editingTask) return false;
+  const title = document.getElementById("edit-title").value.trim();
+  const priority = document.getElementById("edit-priority").value;
+  const area = document.getElementById("edit-area").value;
+  const origDue = editOriginal.due ? dueDate(editOriginal.due) : "";
+  return (
+    title !== (editOriginal.title || "") ||
+    priority !== (editOriginal.priority || "") ||
+    area !== (editOriginal.area || "") ||
+    editDue !== origDue
+  );
+}
+
+function updateSaveButton() {
+  const btn = document.getElementById("edit-save");
+  if (!btn) return;
+  btn.disabled = editSaving || !isEditDirty();
+}
+
+function renderEditDueChips() {
+  const wrap = document.getElementById("edit-due-chips");
+  if (!wrap) return;
+  const t = todayISO();
+  const tm = tomorrowISO();
+  wrap.querySelectorAll(".due-chip[data-due]").forEach((btn) => {
+    const kind = btn.dataset.due;
+    const val = kind === "today" ? t : kind === "tomorrow" ? tm : "";
+    btn.classList.toggle("active", editDue === val);
+  });
+  const customInput = document.getElementById("edit-due-custom");
+  const placeholder = document.getElementById("edit-due-placeholder");
+  if (customInput) {
+    const isCustom = editDue && editDue !== t && editDue !== tm;
+    customInput.classList.toggle("active", !!isCustom);
+    customInput.value = isCustom ? editDue : "";
+    if (placeholder) placeholder.classList.toggle("hidden", !!customInput.value);
+  }
+  updateSaveButton();
+}
+
+document.querySelectorAll("#edit-due-chips .due-chip[data-due]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const kind = btn.dataset.due;
+    editDue = kind === "today" ? todayISO() : kind === "tomorrow" ? tomorrowISO() : "";
+    renderEditDueChips();
+  });
+});
+document.getElementById("edit-due-custom").addEventListener("change", (e) => {
+  if (!e.target.value) return;
+  editDue = e.target.value;
+  renderEditDueChips();
+});
+document.getElementById("edit-title").addEventListener("input", updateSaveButton);
+document.getElementById("edit-priority").addEventListener("change", updateSaveButton);
+document.getElementById("edit-area").addEventListener("change", updateSaveButton);
+
+// Clean dismiss closes silently; a dirty dismiss confirms first. Cancel,
+// backdrop tap, and swipe-down all route through here so the rule is
+// enforced in exactly one place.
+function requestCloseEditSheet() {
+  if (!editingTask) return;
+  if (isEditDirty()) {
+    if (confirm("Discard changes?")) closeEditSheet();
+  } else {
+    closeEditSheet();
+  }
+}
+document.getElementById("edit-cancel").addEventListener("click", requestCloseEditSheet);
+document.getElementById("edit-backdrop").addEventListener("click", requestCloseEditSheet);
+
+(function initEditSwipe() {
+  const sheet = document.getElementById("edit-sheet");
+  if (!sheet) return;
+  let startY = null;
+  sheet.addEventListener("touchstart", (e) => { startY = e.touches[0].clientY; }, { passive: true });
+  sheet.addEventListener("touchend", (e) => {
+    if (startY === null) return;
+    const dy = e.changedTouches[0].clientY - startY;
+    startY = null;
+    if (dy > 80) requestCloseEditSheet(); // swipe-down beyond threshold
+  }, { passive: true });
+})();
+
+function showToast(msg) {
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.textContent = msg;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add("show"));
+  setTimeout(() => {
+    el.classList.remove("show");
+    setTimeout(() => el.remove(), 200);
+  }, 2200);
+}
+
+async function saveEdit() {
+  if (!editingTask || editSaving || !isEditDirty()) return;
+  const task = editingTask;
+  const before = { ...editOriginal };
+
+  const title = document.getElementById("edit-title").value.trim();
+  if (!title) return;
+  const priority = document.getElementById("edit-priority").value;
+  const area = document.getElementById("edit-area").value;
+  const due = editDue;
+  const origDue = before.due ? dueDate(before.due) : "";
+
+  // Exactly one PATCH, containing only the fields that actually changed —
+  // acceptance check 2. Cleared Due/Area go through as explicit null
+  // (Worker v4.1 already supports both — acceptance check 3).
+  const payload = {};
+  if (title !== (before.title || "")) payload.title = title;
+  if (priority !== (before.priority || "")) payload.priority = priority;
+  if (area !== (before.area || "")) payload.area = area || null;
+  if (due !== origDue) payload.due = due || null;
+  if (!Object.keys(payload).length) { closeEditSheet(); return; }
+
+  editSaving = true;
+  updateSaveButton();
+
+  const optimistic = { ...before, ...payload, due: payload.due === null ? null : (payload.due || before.due) };
+  const wasInView = viewTasks([before], activeView).length > 0;
+  const stillInView = viewTasks([optimistic], activeView).length > 0;
+
+  const prev = captureRects();
+  let cached = getCache().map((t) => (t.id === task.id ? optimistic : t));
+  setCache(cached);
+  let all = sortTasks(cached);
+  renderChips(all);
+  render(all);
+  playFlip(prev);
+  closeEditSheet();
+
+  // 1.5 fixed silent disappearance once already — a task leaving the active
+  // view on a manual edit gets the same explicit confirmation, not silence.
+  if (wasInView && !stillInView) {
+    showToast(`Saved · moved out of ${getView(activeView).label}`);
+  }
+
+  try {
+    const updated = await apiFetch(`/api/tasks/${task.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+    cached = getCache().map((t) => (t.id === task.id ? updated : t));
+    setCache(cached);
+    all = sortTasks(cached);
+    renderChips(all);
+    render(all);
+  } catch (e) {
+    // Rollback the full pre-edit task and reopen the sheet with the user's
+    // edits intact — nothing the user typed is lost on a failed save.
+    cached = getCache().map((t) => (t.id === task.id ? before : t));
+    setCache(cached);
+    all = sortTasks(cached);
+    renderChips(all);
+    render(all);
+
+    editingTask = task;
+    editOriginal = before;
+    editDue = due;
+    document.getElementById("edit-title").value = title;
+    document.getElementById("edit-priority").value = priority;
+    document.getElementById("edit-area").value = area;
+    renderEditDueChips();
+    document.getElementById("edit-sheet-msg").textContent = "Couldn't save — try again.";
+    document.getElementById("edit-backdrop").classList.add("show");
+    document.getElementById("edit-sheet").classList.add("show");
+    editSaving = false;
+    updateSaveButton();
+  }
+}
+document.getElementById("edit-save").addEventListener("click", saveEdit);
 
 // --- boot ---
 async function boot() {
