@@ -2,12 +2,18 @@
 // Caches the app shell only. Task data is never cached here — app.js
 // keeps its own localStorage snapshot so offline behavior stays predictable.
 
-const CACHE_NAME = "tasks-shell-v11";
+// v11 -> v12: added concursus.js (Phase 1 CONCURSUS tab port). No font
+// assets added yet -- Playfair Display / Roboto Slab are not self-hosted
+// in this repo (Phase 0 req 11 forbids the runtime Google Fonts request
+// the roadmap doc's graft block used), so there is nothing new to cache
+// for them until real .woff2 files land under ./fonts/.
+const CACHE_NAME = "tasks-shell-v12";
 const SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./concursus.js",
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
