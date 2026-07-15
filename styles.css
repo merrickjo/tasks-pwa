@@ -347,13 +347,16 @@ main {
    a native iOS date control cost more than the feature is worth right
    now. This is a real, visible native date input — plain, not pretty,
    but it can't silently fail to open because there's nothing to fail:
-   the user taps the actual control they can see. */
+   the user taps the actual control they can see. Confirmed working
+   on-device 15 Jul; debug outline and build stamp removed in v9. Field
+   reads blank until a date is picked — native iOS date inputs have no
+   usable placeholder — that's accepted platform behavior, not a bug. */
 .capture-due .due-date-native {
   position: static;
   display: block;
-  flex: 0 0 118px;
-  width: 118px;
-  min-width: 118px;
+  flex: 0 0 108px;
+  width: 108px;
+  min-width: 108px;
   height: 34px;
   margin: 0;
   padding: 4px 6px;
@@ -361,6 +364,7 @@ main {
   pointer-events: auto;
   border: 1px solid var(--border);
   border-radius: 8px;
+  outline: none !important;
   background: transparent;
   color: var(--ink-soft);
   font-family: var(--font-mono);
@@ -368,24 +372,12 @@ main {
   -webkit-appearance: auto;
   appearance: auto;
 }
+.capture-due .due-date-native:focus {
+  border-color: var(--ink);
+}
 .due-date-native.active {
   border-color: var(--ink);
   color: var(--ink);
-}
-/* TEMP (15 Jul) — proves the user is tapping the real control, not a
-   stale cached shell. Remove once v8 is confirmed opening the picker. */
-.due-date-native {
-  outline: 2px solid red !important;
-  z-index: 100 !important;
-}
-
-/* TEMP (15 Jul) — same purpose: removes ambiguity about which shell
-   version is actually loaded. Remove alongside the outline above. */
-#build-stamp {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--red);
-  padding: 2px 20px 0;
 }
 
 .capture-row {
