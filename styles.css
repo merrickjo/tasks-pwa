@@ -653,11 +653,15 @@ body.sheet-open { overflow: hidden; }
    CONCURSUS integration — Phase 1/2 (Signature Lock)
    Variable-driven capture/nav stack per the revised graft decision:
    never hardcode pixel offsets carried over from the archived snapshot.
-   --nk-tabbar-h and --capture-h below are first-pass values derived from
-   this file's own existing rules (see comments), NOT copied from the
-   roadmap doc. They are placeholders pending Merrick's on-device 375px
-   measurement (Phase 0 blocker 1) — update both variables from real
-   DevTools/PWA measurements before merging, do not ship as-is.
+
+   --nk-tabbar-h and --capture-h are computed below from this file's own
+   real v5 component rules (box-model math: padding + border + an
+   assumed ~1.15 default line-height for unset-line-height text), not
+   copied from the roadmap doc's 56px/170px and not a bare guess either.
+   The residual uncertainty is real browser line-height rounding on
+   iOS Safari, which this math can't see — confirm both numbers against
+   the actual rendered bar at 320/375/390px before merging, but they
+   should already be close.
    =================================================================== */
 :root {
   --nk-cream: #F5F1E8;
@@ -668,19 +672,22 @@ body.sheet-open { overflow: hidden; }
   --nk-serif: "Playfair Display", "Lora", serif;
   --nk-slab: "Roboto Slab", "Zilla Slab", serif;
 
-  /* Floating nav bar: inset 12px each side, content height derived from
-     12px+10px label padding + ~16px line height + 2px border ≈ 40px.
-     PLACEHOLDER — confirm against the real rendered bar on-device. */
+  /* Floating nav bar, inset 12px each side. Height = .tabbar's own 4px+4px
+     padding, plus .tab-btn's tallest rendered height: 12px+10px padding +
+     2px border-bottom + ~14px text line box (12px font * ~1.15) = 38px.
+     8 + 38 = 46px. */
   --nk-tabbar-inset: 12px;
-  --nk-tabbar-h: 40px;
+  --nk-tabbar-h: 46px;
 
-  /* Capture bar's own content height. This app's existing `main {
-     padding-bottom: 96px }` rule already implies today's capture height
-     (no nav) is ~96px including safe-area slack — reusing that as the
-     starting point rather than the doc's invented 170px. Still a
-     PLACEHOLDER: re-derive once due-chip row wraps/measures for real at
-     320–390px, and re-check whenever capture's own markup changes. */
-  --capture-h: 96px;
+  /* Capture bar's own rendered height with FLAT bottom padding (see the
+     .capture override below — floating capture no longer needs its own
+     safe-area padding, the nav bar's position already reserves that).
+     10px pad-top + 34px .capture-due row (governed by .due-date-native's
+     explicit height:34px, taller than a .due-chip) + 8px margin-bottom
+     + 42px .capture-row (governed by #new-title: 11px+11px padding +
+     2px border + ~18px text line box from font-size:15px) + 10px flat
+     pad-bottom = 104px. */
+  --capture-h: 104px;
 }
 
 /* --- bottom navigation: flat floating bar, mode inversion, no elevation --- */
@@ -731,6 +738,16 @@ body.concursus-active .tab-btn { color: var(--nk-charcoal); }
    the viewport edge, it stacks above the nav bar with the same inset. */
 .capture {
   bottom: calc(var(--nk-tabbar-inset) + var(--nk-tabbar-h) + var(--nk-tabbar-inset) + env(safe-area-inset-bottom));
+  /* BUG FIX: the base .capture rule (declared earlier in this file) sets
+     padding-bottom to `calc(10px + env(safe-area-inset-bottom))`, which
+     made sense when capture sat flush against the physical bottom edge.
+     Now that it floats above the nav bar, that safe-area clearance is
+     already reserved by the nav's own `bottom` offset above -- keeping
+     it here as well would reserve the safe-area inset TWICE (once in
+     this element's own height via padding, once in how far up it
+     floats). Flatten it back to a plain 10px so --capture-h's own math
+     above stays correct. */
+  padding-bottom: 10px;
 }
 body.keyboard-open .capture { bottom: 0; } /* capture alone follows the keyboard */
 
