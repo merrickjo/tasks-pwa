@@ -329,6 +329,21 @@ const CONCURSUS = (() => {
     return n;
   }
 
+  // Purely decorative — a flat-line d20 silhouette for the ungoverned empty
+  // state. Static SVG string via innerHTML (safe: hardcoded, no user input)
+  // rather than createElementNS boilerplate for a one-off icon. No fill, no
+  // gradient/shadow/glow per the Signature Lock rules -- outline only, in
+  // the one permitted accent color.
+  function buildDieIcon() {
+    const wrap = el("div", "cc-die-icon");
+    wrap.innerHTML =
+      '<svg viewBox="0 0 120 120" aria-hidden="true" focusable="false">' +
+      '<path d="M60,10 L103.3,35 L103.3,85 L60,110 L16.7,85 L16.7,35 Z"/>' +
+      '<path d="M60,10 L103.3,85 M60,10 L16.7,85 M60,110 L103.3,35 M60,110 L16.7,35"/>' +
+      '</svg>';
+    return wrap;
+  }
+
   function buildManualEntry() {
     const wrap = el("div", "cc-manual");
     const row = el("div", "cc-manual-row");
@@ -362,6 +377,7 @@ const CONCURSUS = (() => {
 
     if (state.roll === null) {
       const stage = el("div", "cc-roll-stage");
+      stage.appendChild(buildDieIcon());
       stage.appendChild(el("p", "cc-ungoverned", "No roll yet — the day is ungoverned."));
       const btn = el("button", "cc-roll-btn", "ROLL D20");
       btn.addEventListener("click", rollDie);

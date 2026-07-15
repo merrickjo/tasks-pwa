@@ -824,7 +824,22 @@ main {
   padding-bottom: 12px;
   border-bottom: 1px solid var(--nk-tan);
 }
-.cc-ungoverned { font-size: 14px; font-style: italic; opacity: 0.8; }
+.cc-die-icon {
+  width: 84px;
+  margin: 4px auto 12px;
+}
+.cc-die-icon svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  fill: none;
+  stroke: var(--nk-coral);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+.cc-ungoverned { font-size: 14px; font-style: italic; opacity: 0.8; text-align: center; }
 .cc-roll-btn {
   display: block;
   width: 100%;
