@@ -234,38 +234,41 @@ function syncQuickAddDue() {
   quickAddDue = viewDefaultDue(activeView);
   renderDueChips();
 }
+// FIX v3 (15 Jul): the calendar chip is now a <label> wrapping the real
+// <input type="date"> (see index.html + styles.css) rather than a <button>
+// that scripts .showPicker()/.click() — iOS WebKit unreliably honors that
+// programmatic call on an off-screen input. The label gets no data-due
+// attribute, so the click-listener loop below (which only targets chips
+// with one) naturally skips it; opening the picker is just the browser's
+// native label-for-input behavior now, no JS needed for that part.
 function renderDueChips() {
   const wrap = document.getElementById("new-due-chips");
   if (!wrap) return;
   const t = todayISO();
   const tm = tomorrowISO();
-  wrap.querySelectorAll(".due-chip").forEach((btn) => {
+  wrap.querySelectorAll(".due-chip[data-due]").forEach((btn) => {
     const kind = btn.dataset.due;
-    if (kind === "calendar") {
-      const isCustom = quickAddDue && quickAddDue !== t && quickAddDue !== tm;
-      btn.classList.toggle("active", !!isCustom);
-      btn.textContent = isCustom ? quickAddDue.slice(5) : "📅"; // MM-DD when custom
-      return;
-    }
     const val = kind === "today" ? t : kind === "tomorrow" ? tm : "";
     btn.classList.toggle("active", quickAddDue === val);
   });
+  const calChip = document.getElementById("due-custom-chip");
+  const calLabel = document.getElementById("due-custom-label");
+  if (calChip && calLabel) {
+    const isCustom = quickAddDue && quickAddDue !== t && quickAddDue !== tm;
+    calChip.classList.toggle("active", !!isCustom);
+    calLabel.textContent = isCustom ? quickAddDue.slice(5) : "📅"; // MM-DD when custom
+  }
 }
-document.querySelectorAll(".due-chip").forEach((btn) => {
+document.querySelectorAll(".due-chip[data-due]").forEach((btn) => {
   btn.addEventListener("click", () => {
     const kind = btn.dataset.due;
-    if (kind === "calendar") {
-      const picker = document.getElementById("new-due-picker");
-      if (picker.showPicker) picker.showPicker();
-      else picker.focus();
-      return;
-    }
     quickAddDue = kind === "today" ? todayISO() : kind === "tomorrow" ? tomorrowISO() : "";
     renderDueChips();
   });
 });
-document.getElementById("new-due-picker").addEventListener("change", (e) => {
-  quickAddDue = e.target.value || "";
+document.getElementById("new-due-custom").addEventListener("change", (e) => {
+  if (!e.target.value) return;
+  quickAddDue = e.target.value;
   renderDueChips();
 });
 

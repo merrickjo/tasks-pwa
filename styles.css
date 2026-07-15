@@ -340,23 +340,41 @@ main {
   color: var(--bg);
   border-color: var(--ink);
 }
-.due-chip-cal { padding: 6px 9px; }
-
-/* FIX (post-ship, 15 Jul): 1px/opacity:0 did NOT actually hide this on iOS
-   Safari — it rendered a native "JUL 17" mini calendar badge inline, which
-   is what was actually squeezing the other chips out of view (not a click
-   handler bug). display:none isn't an option either — showPicker() throws
-   on an element with no box. Pushing it off-screen with position:fixed
-   keeps it "rendered" (so showPicker() still works) while genuinely
-   invisible, regardless of the browser's own control chrome size. */
-.due-picker-hidden {
-  position: fixed;
-  top: -9999px;
-  left: -9999px;
+/* FIX v3 (post-ship, 15 Jul): iOS WebKit (including Brave) unreliably
+   honors showPicker()/programmatic .click() on an off-screen date input —
+   it can silently no-op. The fix isn't hiding the input at all; it's an
+   overlay: the real <input type="date"> sits transparently on top of the
+   visible chip (a <label>, so a tap anywhere on the label focuses the
+   input — genuine user activation, not a script call), sized to match via
+   position:absolute + inset:0. The emoji/label underneath is just visual;
+   the actual tap target is the invisible native control. */
+.due-chip-calendar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+}
+#new-due-custom {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  pointer-events: auto;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.sr-only {
+  position: absolute;
   width: 1px;
   height: 1px;
-  opacity: 0;
-  pointer-events: none;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 
 .capture-row {

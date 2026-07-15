@@ -37,8 +37,11 @@
       <button type="button" class="due-chip active" data-due="none">—</button>
       <button type="button" class="due-chip" data-due="today">Today</button>
       <button type="button" class="due-chip" data-due="tomorrow">Tmrw</button>
-      <button type="button" class="due-chip due-chip-cal" data-due="calendar" aria-label="Pick a date">📅</button>
-      <input type="date" id="new-due-picker" class="due-picker-hidden" tabindex="-1" aria-hidden="true">
+      <label class="due-chip due-chip-calendar" id="due-custom-chip">
+        <span aria-hidden="true" id="due-custom-label">📅</span>
+        <span class="sr-only">Choose custom date</span>
+        <input id="new-due-custom" type="date" aria-label="Choose custom due date">
+      </label>
     </div>
     <div class="capture-row">
       <input type="text" id="new-title" placeholder="Add a task">
