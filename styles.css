@@ -309,17 +309,29 @@ main {
 }
 .capture-due::-webkit-scrollbar { display: none; }
 
+/* FIX v2 (post-ship, 15 Jul, correct root cause): the real bug was a
+   selector collision, not overflow or the date-input hiding technique.
+   .capture button (specificity 0,1,1) outranks .due-chip (0,1,0), so the
+   pre-existing 40x40/20px button rule below — written when the + button
+   was the only <button> in .capture — was silently overriding every size
+   property this rule sets, on every due chip. That's what actually forced
+   each chip into a 40x40 box and clipped the text. Explicit sizing here
+   plus scoping that old rule to #new-add (below) fixes it for real. */
 .due-chip {
-  flex: none;
+  flex: 0 0 auto;
+  width: auto;
+  height: auto;
+  min-width: max-content;
   white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 0.02em;
-  padding: 5px 11px;
+  padding: 6px 10px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 8px;
   background: transparent;
   color: var(--ink-soft);
+  line-height: 1.2;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -328,7 +340,7 @@ main {
   color: var(--bg);
   border-color: var(--ink);
 }
-.due-chip-cal { padding: 5px 10px; }
+.due-chip-cal { padding: 6px 9px; }
 
 /* FIX (post-ship, 15 Jul): 1px/opacity:0 did NOT actually hide this on iOS
    Safari — it rendered a native "JUL 17" mini calendar badge inline, which
@@ -383,7 +395,10 @@ main {
    crowding the title input on a 375px viewport (iPhone SE class) */
 #new-area { max-width: 92px; }
 
-.capture button {
+/* FIX v2 (15 Jul): was `.capture button` — matched every <button> in
+   .capture, including the due chips, and its higher specificity silently
+   overrode their sizing. Scoped to the add button only. */
+.capture #new-add {
   flex: none;
   width: 40px;
   height: 40px;
@@ -395,7 +410,7 @@ main {
   line-height: 1;
   cursor: pointer;
 }
-.capture button:disabled { opacity: 0.4; }
+.capture #new-add:disabled { opacity: 0.4; }
 
 /* --- setup screen --- */
 .setup {
