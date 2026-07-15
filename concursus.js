@@ -182,6 +182,7 @@ const CONCURSUS = (() => {
   let boundContainer = null;
   let visibilityBound = false;
   let lastError = "";
+  let lastProjectionError = ""; // set by getProjectedTasks() on a fail-closed mandate resolution
 
   // ---------- Subscribers (Phase 1 req 16) ----------
   const listeners = new Set();
@@ -207,7 +208,20 @@ const CONCURSUS = (() => {
   function getProjectedTasks() {
     state = loadState();
     if (state.roll === null) return [];
-    const mandate = mandateFor(state.roll);
+    // Phase 3 req 13 -- fail closed: if the mandate can't resolve for any
+    // reason, return no tasks at all rather than a partial four. This
+    // shouldn't happen in practice (state.roll is already validated 1-20
+    // by isValidState before it's ever stored), but getProjectedTasks() is
+    // now load-bearing for the Tasks tab's own render() path, so a thrown
+    // exception here must never propagate up and break Tasks rendering.
+    let mandate;
+    try {
+      mandate = mandateFor(state.roll);
+    } catch {
+      lastProjectionError = "Couldn't resolve today's mandate for roll " + state.roll + ".";
+      return [];
+    }
+    lastProjectionError = "";
     return DOMAIN_KEYS.map((key, idx) => {
       const task = {
         id: "concursus:" + state.date + ":" + key,
@@ -387,7 +401,22 @@ const CONCURSUS = (() => {
       return;
     }
 
-    const m = mandateFor(state.roll);
+    let m;
+    try {
+      m = mandateFor(state.roll);
+    } catch {
+      // Phase 3 req 13 -- fail closed. Show the failure plainly and offer
+      // the one recovery path (a fresh roll) rather than rendering a
+      // partial or garbled mandate.
+      const errStage = el("div", "cc-roll-stage");
+      errStage.appendChild(el("p", "cc-error",
+        "Couldn't resolve today's mandate for roll " + state.roll + ". Try rolling again."));
+      const retryBtn = el("button", "cc-roll-btn", "ROLL D20");
+      retryBtn.addEventListener("click", rollDie);
+      errStage.appendChild(retryBtn);
+      root.appendChild(errStage);
+      return;
+    }
     const s = status();
 
     const rollLine = el("div", "cc-roll-line");
