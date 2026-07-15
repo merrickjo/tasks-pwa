@@ -49,9 +49,20 @@ document.getElementById("cfg-save").addEventListener("click", () => {
 });
 
 // --- date helpers ---
-function todayISO() {
+// All date logic runs on the DEVICE LOCAL clock (Asia/Jakarta in practice).
+// Never use toISOString() for "today" — it returns the UTC date, which in
+// UTC+7 is *yesterday* between 00:00 and 07:00 local. That bug lived in v2.
+function localISO(d = new Date()) {
+  return d.getFullYear() + "-" +
+    String(d.getMonth() + 1).padStart(2, "0") + "-" +
+    String(d.getDate()).padStart(2, "0");
+}
+function todayISO() { return localISO(); }
+// Upcoming Sunday, inclusive of today when today is Sunday.
+function nextSundayISO() {
   const d = new Date();
-  return d.toISOString().slice(0, 10);
+  d.setDate(d.getDate() + ((7 - d.getDay()) % 7));
+  return localISO(d);
 }
 // Notion can return full datetimes ("2026-07-19T00:00:00.000+07:00") — compare/display date part only
 function dueDate(due) {
@@ -65,47 +76,186 @@ function isToday(due) {
   return dueDate(due) === todayISO();
 }
 
-// --- area filter ---
+// --- areas (data vocabulary; used for tags, grouping, quick-add) ---
 const AREAS = [
-  { name: "All", cls: "" },
   { name: "Church", emoji: "⛪", cls: "a-church" },
   { name: "Blibli", emoji: "🛒", cls: "a-blibli" },
   { name: "Fitness", emoji: "💪", cls: "a-fitness" },
   { name: "Family", emoji: "👨‍👩‍👦", cls: "a-family" },
   { name: "Personal", emoji: "●", cls: "a-personal" },
 ];
-const FILTER_KEY = "tasks-area-filter-v1";
-let activeArea = localStorage.getItem(FILTER_KEY) || "All";
-
-function renderChips() {
-  const wrap = document.getElementById("area-chips");
-  wrap.innerHTML = "";
-  AREAS.forEach((a) => {
-    const btn = document.createElement("button");
-    btn.className = "chip" + (activeArea === a.name ? " active" : "");
-    btn.textContent = a.name === "All" ? "All" : `${a.emoji} ${a.name}`;
-    btn.addEventListener("click", () => {
-      activeArea = a.name;
-      localStorage.setItem(FILTER_KEY, activeArea);
-      const sel = document.getElementById("new-area");
-      if (sel) sel.value = a.name === "All" ? "" : a.name;
-      renderChips();
-      render(sortTasks(getCache()));
-    });
-    wrap.appendChild(btn);
-  });
-}
-
 function areaCls(name) {
   const a = AREAS.find((x) => x.name === name);
   return a ? a.cls : "";
 }
 
+// --- smart view system (backlog 1.3, absorbs 1.2) ---
+// One chip row, views only — the 1.1 Area chips are retired. Undated tasks
+// are EXCLUDED from smart views (date views stay date-honest); they live in
+// All, grouped under their Area.
+const VIEWS = [
+  {
+    id: "All", label: "All", defaultArea: "",
+    grouping: "area",
+    empty: "No open tasks.",
+    match: () => true,
+  },
+  {
+    id: "SundayPrep", label: "Sunday Prep", defaultArea: "Church",
+    grouping: "date",
+    empty: "Sunday Prep is clear. Nothing between you and the sermon.",
+    match: (t) => t.area === "Church" && dueDate(t.due) !== null && dueDate(t.due) <= nextSundayISO(),
+  },
+  {
+    id: "Workday", label: "Workday", defaultArea: "Blibli",
+    grouping: "date",
+    empty: "Workday clear. Blibli owes you nothing today.",
+    match: (t) => t.area === "Blibli" && dueDate(t.due) !== null && dueDate(t.due) <= todayISO(),
+  },
+  {
+    id: "Weekend", label: "Weekend", defaultArea: "Family",
+    grouping: "date",
+    empty: "Weekend is open. Go live it.",
+    match: (t) => (t.area === "Family" || t.area === "Fitness") && dueDate(t.due) !== null && dueDate(t.due) <= nextSundayISO(),
+  },
+];
+function getView(id) { return VIEWS.find((v) => v.id === id) || VIEWS[0]; }
+function viewTasks(all, id) { return all.filter(getView(id).match); }
+
+// Time-aware default view. Precedence mirrors the backlog schedule table,
+// top to bottom; first match wins.
+function resolveDefaultView(d = new Date()) {
+  const day = d.getDay(); // 0 = Sun … 6 = Sat
+  const h = d.getHours() + d.getMinutes() / 60;
+  if (day >= 1 && day <= 5 && h >= 8 && h < 18) return "Workday";      // Mon–Fri 08:00–18:00
+  if ((day === 4 || day === 5) && h >= 18) return "SundayPrep";        // Thu & Fri from 18:00
+  if ((day === 6 && h >= 18) || (day === 0 && h < 13)) return "SundayPrep"; // Sat 18:00 → Sun 13:00
+  if (day === 6 && h >= 8 && h < 18) return "Weekend";                 // Sat 08:00–18:00
+  if (day === 0 && h >= 13 && h < 17) return "Weekend";                // Sun 13:00–17:00
+  if (day === 0 && h >= 17) return "All";                              // Sun from 17:00 — BuJo lens
+  return "All";                                                        // all other hours
+}
+
+// Manual selection holds for the current session only (sessionStorage —
+// a killed-and-reopened app is a fresh session, so cold opens re-resolve
+// from the clock, exactly as 1.3 specifies).
+const VIEW_SESSION_KEY = "tasks-view-v1";
+let activeView = "All";
+let viewManual = false;
+(function initViewState() {
+  try {
+    const s = JSON.parse(sessionStorage.getItem(VIEW_SESSION_KEY));
+    if (s && s.view && getView(s.view).id === s.view) {
+      activeView = s.view;
+      viewManual = !!s.manual;
+      return;
+    }
+  } catch { /* fall through */ }
+  activeView = resolveDefaultView();
+})();
+function saveViewState() {
+  sessionStorage.setItem(VIEW_SESSION_KEY, JSON.stringify({ view: activeView, manual: viewManual }));
+}
+
+// Empty-view fallback: if the *scheduled* default view has zero tasks, open
+// All instead (biweekly church prep makes an empty Sunday Prep legitimate).
+// Only applies while the view is clock-driven — a manual pick is respected
+// even when empty, because an empty smart view is a message, not an error.
+function applyAutoView(all) {
+  if (viewManual) return;
+  let v = resolveDefaultView();
+  if (v !== "All" && viewTasks(all, v).length === 0) v = "All";
+  activeView = v;
+  saveViewState();
+}
+
+// --- view chips ---
+function renderChips(allTasks) {
+  const wrap = document.getElementById("view-chips");
+  wrap.innerHTML = "";
+  VIEWS.forEach((v) => {
+    const btn = document.createElement("button");
+    btn.className = "chip" + (activeView === v.id ? " active" : "");
+    btn.textContent = v.label;
+    const n = viewTasks(allTasks, v.id).length;
+    if (v.id !== "All" && n > 0) {
+      const b = document.createElement("span");
+      b.className = "badge";
+      b.textContent = n;
+      btn.appendChild(b);
+    }
+    btn.addEventListener("click", () => switchView(v.id));
+    wrap.appendChild(btn);
+  });
+}
+
+function switchView(id) {
+  if (id === activeView) return;
+  activeView = id;
+  viewManual = true; // holds for this session
+  saveViewState();
+  syncQuickAddArea();
+  const prev = captureRects();
+  const all = sortTasks(getCache());
+  renderChips(all);
+  render(all);
+  playFlip(prev);
+}
+
+function syncQuickAddArea() {
+  const sel = document.getElementById("new-area");
+  if (sel) sel.value = getView(activeView).defaultArea;
+}
+
+// --- FLIP regroup animation (≤250ms budget, backlog 3.2) ---
+// Same tasks, new lens — the animation IS the feedback. Rows are matched
+// across renders by task id; moved rows glide, entering rows fade in.
+function captureRects() {
+  const m = new Map();
+  document.querySelectorAll("#list .row").forEach((r) => m.set(r.dataset.id, r.getBoundingClientRect()));
+  return m;
+}
+function playFlip(prev) {
+  if (!prev || !("animate" in Element.prototype)) return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  document.querySelectorAll("#list .row").forEach((r) => {
+    const old = prev.get(r.dataset.id);
+    if (!old) {
+      r.animate(
+        [{ opacity: 0, transform: "translateY(6px)" }, { opacity: 1, transform: "none" }],
+        { duration: 180, easing: "ease-out" }
+      );
+      return;
+    }
+    const now = r.getBoundingClientRect();
+    const dx = old.left - now.left;
+    const dy = old.top - now.top;
+    if (dx || dy) {
+      r.animate(
+        [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }],
+        { duration: 220, easing: "cubic-bezier(0.2, 0, 0, 1)" }
+      );
+    }
+  });
+}
+
+// --- Area-group collapse state (persists across sessions; UI preference,
+// not task state — the ground rule concerns data Notion can't see, and
+// Notion never needs to see which groups you folded on your phone) ---
+const COLLAPSE_KEY = "tasks-groups-collapsed-v1";
+function getCollapsed() {
+  try { return JSON.parse(localStorage.getItem(COLLAPSE_KEY)) || {}; } catch { return {}; }
+}
+function setCollapsed(map) { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(map)); }
+
 // --- rendering ---
 function render(allTasks) {
-  const tasks = activeArea === "All" ? allTasks : allTasks.filter((t) => t.area === activeArea);
+  const view = getView(activeView);
+  const tasks = viewTasks(allTasks, view.id);
   const list = document.getElementById("list");
-  const countText = activeArea === "All"
+
+  document.getElementById("view-title").textContent = view.id === "All" ? "All" : view.label;
+  const countText = view.id === "All"
     ? (tasks.length ? `· ${tasks.length} open` : "")
     : `· ${tasks.length} of ${allTasks.length} open`;
   document.getElementById("task-count").textContent = countText;
@@ -114,15 +264,23 @@ function render(allTasks) {
   });
 
   if (!tasks.length) {
-    list.innerHTML = `<div class="empty">${activeArea === "All" ? "Nothing open. Clean slate." : "Nothing open in " + activeArea + "."}</div>`;
+    list.innerHTML = `<div class="empty">${view.empty}</div>`;
     return;
   }
 
+  list.innerHTML = "";
+  if (view.grouping === "area") {
+    renderAreaGroups(list, tasks);
+  } else {
+    renderDateGroups(list, tasks);
+  }
+}
+
+// Smart views: fixed date grouping — Overdue / Today / Upcoming.
+function renderDateGroups(list, tasks) {
   const overdue = tasks.filter((t) => isOverdue(t.due));
   const today = tasks.filter((t) => isToday(t.due));
   const upcoming = tasks.filter((t) => !isOverdue(t.due) && !isToday(t.due));
-
-  list.innerHTML = "";
   [
     ["Overdue", overdue],
     ["Today", today],
@@ -134,6 +292,54 @@ function render(allTasks) {
     h.textContent = label;
     list.appendChild(h);
     group.forEach((t) => list.appendChild(renderRow(t)));
+  });
+}
+
+// All view: fixed Area grouping. Empty groups stay visible ("Family — 0") —
+// that IS the domain balance signal, previewing 2.2 before it ships.
+// Tasks with no Area land in a trailing "No Area" group (shown only when
+// nonempty — an empty triage bucket carries no signal).
+function renderAreaGroups(list, tasks) {
+  const collapsed = getCollapsed();
+  const groups = AREAS.map((a) => ({
+    key: a.name,
+    label: a.name,
+    emoji: a.emoji,
+    cls: a.cls,
+    items: tasks.filter((t) => t.area === a.name),
+    alwaysShow: true,
+  }));
+  const noArea = tasks.filter((t) => !t.area);
+  if (noArea.length) {
+    groups.push({ key: "NoArea", label: "No Area", emoji: "", cls: "", items: noArea, alwaysShow: false });
+  }
+
+  groups.forEach((g) => {
+    if (!g.items.length && !g.alwaysShow) return;
+    const isCollapsed = !!collapsed[g.key];
+
+    const head = document.createElement("button");
+    head.className = "area-head " + g.cls + (isCollapsed ? " collapsed" : "") + (!g.items.length ? " zero" : "");
+    head.innerHTML =
+      `<span class="area-dot"></span>` +
+      `<span class="area-name">${g.emoji ? g.emoji + " " : ""}${g.label}</span>` +
+      `<span class="area-count">${g.items.length}</span>` +
+      `<svg class="area-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6,9 12,15 18,9"/></svg>`;
+
+    const bodyWrap = document.createElement("div");
+    bodyWrap.className = "group-body" + (isCollapsed ? " collapsed" : "");
+    g.items.forEach((t) => bodyWrap.appendChild(renderRow(t)));
+
+    head.addEventListener("click", () => {
+      const map = getCollapsed();
+      map[g.key] = !map[g.key];
+      setCollapsed(map);
+      head.classList.toggle("collapsed", map[g.key]);
+      bodyWrap.classList.toggle("collapsed", map[g.key]);
+    });
+
+    list.appendChild(head);
+    list.appendChild(bodyWrap);
   });
 }
 
@@ -205,6 +411,7 @@ async function completeTask(task, rowEl, checkEl) {
     setTimeout(() => rowEl.remove(), 260);
     const cached = getCache().filter((t) => t.id !== task.id);
     setCache(cached);
+    renderChips(sortTasks(cached)); // keep badge counts honest
   } catch (e) {
     checkEl.classList.remove("checking");
     rowEl.classList.remove("done");
@@ -223,7 +430,9 @@ async function addTask() {
   if (!title) return;
   const priority = document.getElementById("new-priority").value;
   const areaSel = document.getElementById("new-area");
-  const area = areaSel.value || (activeArea !== "All" ? activeArea : "");
+  // Explicit pick wins; otherwise the active view's context area
+  // (Sunday Prep → Church, Workday → Blibli, Weekend → Family, All → none).
+  const area = areaSel.value || getView(activeView).defaultArea;
   const btn = document.getElementById("new-add");
   btn.disabled = true;
   try {
@@ -236,7 +445,9 @@ async function addTask() {
     titleEl.value = "";
     const cached = [created, ...getCache()];
     setCache(cached);
-    render(sortTasks(cached));
+    const all = sortTasks(cached);
+    renderChips(all);
+    render(all);
   } catch (e) {
     alert("Couldn't add — check your connection.");
   } finally {
@@ -256,17 +467,21 @@ function sortTasks(tasks) {
 
 // --- boot ---
 async function boot() {
-  renderChips();
-  const areaSel = document.getElementById("new-area");
-  if (areaSel && activeArea !== "All") areaSel.value = activeArea;
-  const cached = getCache();
-  if (cached.length) render(sortTasks(cached));
+  const cached = sortTasks(getCache());
+  applyAutoView(cached);
+  syncQuickAddArea();
+  renderChips(cached);
+  if (cached.length) render(cached);
 
   try {
     const { tasks } = await apiFetch("/api/tasks");
     document.getElementById("offline-banner").classList.remove("show");
     setCache(tasks);
-    render(sortTasks(tasks));
+    const all = sortTasks(tasks);
+    applyAutoView(all); // fresh data may change the empty-view fallback verdict
+    syncQuickAddArea();
+    renderChips(all);
+    render(all);
   } catch (e) {
     if (cached.length) {
       document.getElementById("offline-banner").classList.add("show");
@@ -276,6 +491,24 @@ async function boot() {
     }
   }
 }
+
+// iOS keeps PWAs alive for hours — a "reopen" is often just a resume, not a
+// cold start. Re-resolve the clock-driven view on resume so Thursday-evening
+// opens land on Sunday Prep even when the page never actually reloaded.
+// Manual picks are left alone (session override holds).
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" || viewManual) return;
+  const all = sortTasks(getCache());
+  const before = activeView;
+  applyAutoView(all);
+  if (activeView !== before) {
+    syncQuickAddArea();
+    const prev = captureRects();
+    renderChips(all);
+    render(all);
+    playFlip(prev);
+  }
+});
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));

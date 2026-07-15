@@ -87,6 +87,77 @@ body {
   border-color: var(--ink);
 }
 
+.chip .badge {
+  display: inline-block;
+  margin-left: 6px;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--border);
+  color: var(--ink);
+  font-size: 10.5px;
+  line-height: 16px;
+  text-align: center;
+}
+.chip.active .badge {
+  background: rgba(255, 255, 255, 0.22);
+  color: var(--bg);
+}
+
+/* --- Area group headers (All view, backlog 1.3 / former 1.2) --- */
+.area-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 16px 20px 6px;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-align: left;
+}
+
+.area-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--area-c, var(--ink-soft));
+}
+
+.area-head .area-name { color: var(--area-c, var(--ink)); }
+
+.area-head .area-count {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 1px solid var(--area-c, var(--border));
+  color: var(--area-c, var(--ink-soft));
+  text-align: center;
+}
+
+/* the empty-group signal: "Family — 0" stays visible, muted but present */
+.area-head.zero .area-name,
+.area-head.zero .area-count { opacity: 0.45; }
+
+.area-chev {
+  width: 12px;
+  height: 12px;
+  margin-left: auto;
+  color: var(--ink-soft);
+  transition: transform 0.18s ease;
+}
+.area-head.collapsed .area-chev { transform: rotate(-90deg); }
+
+.group-body.collapsed { display: none; }
+
 /* per-Area accents */
 .a-church { --area-c: #7B5EA7; }
 .a-blibli { --area-c: #3A6EA5; }
