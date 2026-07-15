@@ -1009,3 +1009,84 @@ main {
   font-size: 13px;
   cursor: pointer;
 }
+
+/* ===================================================================
+   Phase 3 — Roll-to-Tasks projection, rendered inside the Tasks (cream)
+   surface. Uses the Signature Lock coral token as the one accent, same
+   restraint rule as everywhere else: outline/text accent, never a filled
+   body except the CARPE state on the strip.
+   =================================================================== */
+
+/* Mandate strip: hidden (display:none, no "show" class) until a roll
+   exists today -- toggled by app.js's renderConcursusStrip(). */
+.concursus-strip {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 20px 4px;
+  padding: 10px 14px;
+  border: 1px solid var(--nk-coral);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--nk-coral);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  text-align: center;
+  cursor: pointer;
+}
+.concursus-strip.show { display: flex; }
+.concursus-strip.carpe {
+  background: var(--nk-coral);
+  color: var(--bg);
+  border-color: var(--nk-coral);
+}
+
+.concursus-group-label { color: var(--nk-coral); }
+
+.concursus-row { background: var(--surface); }
+
+/* Persistent checked state, distinct from .check.checking (the transient
+   fade-before-removal animation Notion completions use) -- CONCURSUS rows
+   never get removed, they just stay checked. */
+.check.checked { background: var(--ink); }
+.check.checked svg { opacity: 1; }
+
+.row-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--nk-coral);
+  margin-bottom: 3px;
+}
+.row-detail {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+  margin-top: 4px;
+}
+.concursus-row.completed .row-title { text-decoration: line-through; opacity: 0.55; }
+.concursus-row.completed .row-detail { opacity: 0.5; }
+.concursus-row.completed .row-eyebrow { opacity: 0.6; }
+
+.row-link {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--nk-coral);
+  text-decoration: none;
+  border-bottom: 1px solid var(--nk-coral);
+}
+
+/* CONCURSUS tab's own fail-closed mandate-resolution error (req 13) */
+.cc-error {
+  border: 1px solid var(--nk-coral);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-top: 8px;
+  color: var(--nk-coral);
+  font-size: 13px;
+  line-height: 1.5;
+}
