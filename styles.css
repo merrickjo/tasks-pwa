@@ -291,6 +291,45 @@ main {
   padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
 }
 
+/* backlog 1.5: due-date quick-add. Compact chips, not a date picker as the
+   primary control — capture stays one-thumb (1.4 principle). The calendar
+   chip opens the native <input type="date"> for arbitrary dates only. */
+.capture-due {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+  position: relative;
+}
+
+.due-chip {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.due-chip.active {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+.due-chip-cal { padding: 6px 9px; }
+
+/* the date input is triggered programmatically by the calendar chip and
+   never shown itself — it just supplies the native OS date picker UI */
+.due-picker-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .capture-row {
   display: flex;
   gap: 8px;
@@ -299,6 +338,7 @@ main {
 
 .capture input[type="text"] {
   flex: 1;
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 11px 12px;
@@ -310,6 +350,8 @@ main {
 .capture input[type="text"]:focus { outline: none; border-color: var(--ink); }
 
 .capture select {
+  flex: none;
+  max-width: 84px;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 11px 6px;
@@ -317,7 +359,12 @@ main {
   font-size: 12px;
   background: var(--bg);
   color: var(--ink-soft);
+  text-overflow: ellipsis;
 }
+
+/* BUG-08: Area select now shows text labels, not emoji-only — keep it from
+   crowding the title input on a 375px viewport (iPhone SE class) */
+#new-area { max-width: 92px; }
 
 .capture button {
   flex: none;

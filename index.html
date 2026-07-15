@@ -33,15 +33,22 @@
   <div class="banner" id="offline-banner">offline — showing last synced view</div>
   <main id="list"></main>
   <div class="capture">
+    <div class="capture-due" id="new-due-chips">
+      <button type="button" class="due-chip active" data-due="none">—</button>
+      <button type="button" class="due-chip" data-due="today">Today</button>
+      <button type="button" class="due-chip" data-due="tomorrow">Tmrw</button>
+      <button type="button" class="due-chip due-chip-cal" data-due="calendar" aria-label="Pick a date">📅</button>
+      <input type="date" id="new-due-picker" class="due-picker-hidden" tabindex="-1" aria-hidden="true">
+    </div>
     <div class="capture-row">
       <input type="text" id="new-title" placeholder="Add a task">
       <select id="new-area">
         <option value="">Area</option>
-        <option value="Church">⛪</option>
-        <option value="Blibli">🛒</option>
-        <option value="Fitness">💪</option>
-        <option value="Family">👨‍👩‍👦</option>
-        <option value="Personal">●</option>
+        <option value="Church">⛪ Church</option>
+        <option value="Blibli">🛒 Blibli</option>
+        <option value="Fitness">💪 Fitness</option>
+        <option value="Family">👨‍👩‍👦 Family</option>
+        <option value="Personal">● Personal</option>
       </select>
       <select id="new-priority">
         <option value="P2 - High">P2</option>

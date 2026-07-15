@@ -2,7 +2,13 @@
 // Talks to a Cloudflare Worker proxy (see /worker), never to Notion directly
 // (Notion's API has no browser CORS support, so something has to sit in between).
 
-const CACHE_KEY = "tasks-cache-v1";
+// BUG-05: cache shape carries syncedAt metadata alongside tasks, so an
+// offline boot can tell "legitimately empty synced list" (metadata present,
+// zero tasks) from "no cache at all" (metadata absent) — getCache() used to
+// return [] for both, which rendered a connection error over a real "No
+// open tasks" state. One-time fallback reads the old bare-array key.
+const CACHE_KEY = "tasks-cache-v2";
+const LEGACY_CACHE_KEY = "tasks-cache-v1";
 const CFG_KEY = "tasks-cfg-v1";
 
 function getConfig() {
@@ -62,6 +68,11 @@ function todayISO() { return localISO(); }
 function nextSundayISO() {
   const d = new Date();
   d.setDate(d.getDate() + ((7 - d.getDay()) % 7));
+  return localISO(d);
+}
+function tomorrowISO() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
   return localISO(d);
 }
 // Notion can return full datetimes ("2026-07-19T00:00:00.000+07:00") — compare/display date part only
@@ -195,6 +206,7 @@ function switchView(id) {
   viewManual = true; // holds for this session
   saveViewState();
   syncQuickAddArea();
+  syncQuickAddDue();
   const prev = captureRects();
   const all = sortTasks(getCache());
   renderChips(all);
@@ -206,6 +218,56 @@ function syncQuickAddArea() {
   const sel = document.getElementById("new-area");
   if (sel) sel.value = getView(activeView).defaultArea;
 }
+
+// backlog 1.5: due-date quick-add. Same pattern as Area — the active view
+// supplies a context default, an explicit chip pick always wins, and the
+// default re-syncs on every view switch (not on every render, so a manual
+// pick holds until the view actually changes — same lifecycle as Area).
+let quickAddDue = "";
+function viewDefaultDue(viewId) {
+  if (viewId === "Workday") return todayISO();
+  if (viewId === "SundayPrep") return nextSundayISO();
+  if (viewId === "Weekend") return nextSundayISO(); // "Sunday" per spec
+  return ""; // All → none
+}
+function syncQuickAddDue() {
+  quickAddDue = viewDefaultDue(activeView);
+  renderDueChips();
+}
+function renderDueChips() {
+  const wrap = document.getElementById("new-due-chips");
+  if (!wrap) return;
+  const t = todayISO();
+  const tm = tomorrowISO();
+  wrap.querySelectorAll(".due-chip").forEach((btn) => {
+    const kind = btn.dataset.due;
+    if (kind === "calendar") {
+      const isCustom = quickAddDue && quickAddDue !== t && quickAddDue !== tm;
+      btn.classList.toggle("active", !!isCustom);
+      btn.textContent = isCustom ? quickAddDue.slice(5) : "📅"; // MM-DD when custom
+      return;
+    }
+    const val = kind === "today" ? t : kind === "tomorrow" ? tm : "";
+    btn.classList.toggle("active", quickAddDue === val);
+  });
+}
+document.querySelectorAll(".due-chip").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const kind = btn.dataset.due;
+    if (kind === "calendar") {
+      const picker = document.getElementById("new-due-picker");
+      if (picker.showPicker) picker.showPicker();
+      else picker.focus();
+      return;
+    }
+    quickAddDue = kind === "today" ? todayISO() : kind === "tomorrow" ? tomorrowISO() : "";
+    renderDueChips();
+  });
+});
+document.getElementById("new-due-picker").addEventListener("change", (e) => {
+  quickAddDue = e.target.value || "";
+  renderDueChips();
+});
 
 // --- FLIP regroup animation (≤250ms budget, backlog 3.2) ---
 // Same tasks, new lens — the animation IS the feedback. Rows are matched
@@ -408,10 +470,19 @@ async function completeTask(task, rowEl, checkEl) {
       method: "PATCH",
       body: JSON.stringify({ status: "Done" }),
     });
-    setTimeout(() => rowEl.remove(), 260);
-    const cached = getCache().filter((t) => t.id !== task.id);
-    setCache(cached);
-    renderChips(sortTasks(cached)); // keep badge counts honest
+    // BUG-02: wait for the fade-out, then run the exact same
+    // cache-update + full-render path addTask() already uses — completing
+    // a task used to call renderChips() but never render(), so header
+    // counts, date sections, and empty state all went stale (worst case:
+    // completing the last task in a view left its section header floating
+    // over nothing).
+    setTimeout(() => {
+      const cached = getCache().filter((t) => t.id !== task.id);
+      setCache(cached);
+      const all = sortTasks(cached);
+      renderChips(all);
+      render(all);
+    }, 260);
   } catch (e) {
     checkEl.classList.remove("checking");
     rowEl.classList.remove("done");
@@ -438,6 +509,7 @@ async function addTask() {
   try {
     const payload = { title, priority };
     if (area) payload.area = area;
+    if (quickAddDue) payload.due = quickAddDue; // backlog 1.5
     const created = await apiFetch("/api/tasks", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -456,13 +528,60 @@ async function addTask() {
 }
 
 // --- cache ---
-function getCache() {
-  try { return JSON.parse(localStorage.getItem(CACHE_KEY)) || []; } catch { return []; }
+// BUG-05: { syncedAt, tasks } lets boot() tell "synced and legitimately
+// empty" from "never synced" — a bare [] used to mean both.
+function getCacheEntry() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* fall through to legacy check */ }
+  try {
+    const legacyRaw = localStorage.getItem(LEGACY_CACHE_KEY);
+    if (legacyRaw) {
+      const legacyTasks = JSON.parse(legacyRaw);
+      if (Array.isArray(legacyTasks)) {
+        const entry = { syncedAt: null, tasks: legacyTasks };
+        setCacheEntry(entry);
+        localStorage.removeItem(LEGACY_CACHE_KEY);
+        return entry;
+      }
+    }
+  } catch { /* no usable cache either way */ }
+  return null;
 }
-function setCache(tasks) { localStorage.setItem(CACHE_KEY, JSON.stringify(tasks)); }
+function setCacheEntry(entry) { localStorage.setItem(CACHE_KEY, JSON.stringify(entry)); }
+function hasCacheMetadata() { return getCacheEntry() !== null; }
+function getCache() {
+  const entry = getCacheEntry();
+  return entry ? entry.tasks : [];
+}
+function setCache(tasks) { setCacheEntry({ syncedAt: new Date().toISOString(), tasks }); }
 
+// BUG-04: due-state bucket first (overdue → today → upcoming → undated),
+// then due date, then priority P1→P4, then title as a stable tie-break.
+// Previously only compared `due`, so a P4 could outrank a P1 on the same day.
+function dueBucket(due) {
+  const d = dueDate(due);
+  if (d === null) return 3;
+  if (d < todayISO()) return 0;
+  if (d === todayISO()) return 1;
+  return 2;
+}
+function priorityRank(priority) {
+  const m = /^P([1-4])/.exec(priority || "");
+  return m ? parseInt(m[1], 10) : 5; // unrecognized priority sorts last, never crashes
+}
 function sortTasks(tasks) {
-  return [...tasks].sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999"));
+  return [...tasks].sort((a, b) => {
+    const bucketDiff = dueBucket(a.due) - dueBucket(b.due);
+    if (bucketDiff !== 0) return bucketDiff;
+    const da = dueDate(a.due) || "9999-99-99";
+    const db = dueDate(b.due) || "9999-99-99";
+    if (da !== db) return da.localeCompare(db);
+    const prDiff = priorityRank(a.priority) - priorityRank(b.priority);
+    if (prDiff !== 0) return prDiff;
+    return (a.title || "").localeCompare(b.title || "");
+  });
 }
 
 // --- boot ---
@@ -470,8 +589,11 @@ async function boot() {
   const cached = sortTasks(getCache());
   applyAutoView(cached);
   syncQuickAddArea();
+  syncQuickAddDue();
   renderChips(cached);
-  if (cached.length) render(cached);
+  // BUG-05: render whenever cache metadata exists, even with zero tasks —
+  // that's a legitimate "No open tasks", not the absence of a cache.
+  if (hasCacheMetadata()) render(cached);
 
   try {
     const { tasks } = await apiFetch("/api/tasks");
@@ -480,10 +602,11 @@ async function boot() {
     const all = sortTasks(tasks);
     applyAutoView(all); // fresh data may change the empty-view fallback verdict
     syncQuickAddArea();
+    syncQuickAddDue();
     renderChips(all);
     render(all);
   } catch (e) {
-    if (cached.length) {
+    if (hasCacheMetadata()) {
       document.getElementById("offline-banner").classList.add("show");
     } else {
       document.getElementById("list").innerHTML =
@@ -503,6 +626,7 @@ document.addEventListener("visibilitychange", () => {
   applyAutoView(all);
   if (activeView !== before) {
     syncQuickAddArea();
+    syncQuickAddDue();
     const prev = captureRects();
     renderChips(all);
     render(all);
