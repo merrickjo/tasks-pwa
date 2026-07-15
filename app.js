@@ -629,7 +629,15 @@ function openEditSheet(task, triggerEl) {
   document.body.classList.add("sheet-open"); // lock background scroll while open
   document.getElementById("edit-backdrop").classList.add("show");
   document.getElementById("edit-sheet").classList.add("show");
-  document.getElementById("edit-title").focus();
+  // Focus the sheet container, not the Title input. Auto-focusing a text
+  // field summons the iOS keyboard immediately, and the *first* tap outside
+  // a focused field on iOS is consumed just to dismiss the keyboard rather
+  // than registering on whatever was actually tapped — which silently ate
+  // taps on Cancel and the drag handle, both near the bottom of the sheet.
+  // The container (tabindex="-1" in the markup) still satisfies "initial
+  // focus goes somewhere intentional" for the dialog without that cost;
+  // the user taps Title deliberately if they want to edit it.
+  document.getElementById("edit-sheet").focus();
 }
 
 function closeEditSheet() {
@@ -637,6 +645,12 @@ function closeEditSheet() {
   editOriginal = null;
   editDue = "";
   editSaving = false;
+  // Blur whatever's focused (e.g. Title, if the user tapped into it) before
+  // hiding the sheet — a focused-but-hidden input is its own source of
+  // stray keyboard/focus weirdness on iOS.
+  if (document.activeElement && typeof document.activeElement.blur === "function") {
+    document.activeElement.blur();
+  }
   document.body.classList.remove("sheet-open");
   document.getElementById("edit-backdrop").classList.remove("show");
   document.getElementById("edit-sheet").classList.remove("show");
