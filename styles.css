@@ -348,13 +348,21 @@ main {
    now. This is a real, visible native date input — plain, not pretty,
    but it can't silently fail to open because there's nothing to fail:
    the user taps the actual control they can see. Confirmed working
-   on-device 15 Jul; debug outline and build stamp removed in v9. Field
-   reads blank until a date is picked — native iOS date inputs have no
-   usable placeholder — that's accepted platform behavior, not a bug. */
+   on-device 15 Jul; debug outline and build stamp removed in v9.
+   FIX v5 (post-ship, 15 Jul): the "blank until picked" state read as a
+   broken/unlabeled box, not intentional restraint — <input type="date">
+   doesn't support the placeholder attribute in any browser, so there was
+   never any affordance telling the user what the field was for. .due-
+   date-wrap overlays a real, visible "Date" label (pointer-events:none,
+   so taps pass through to the input underneath) that app.js hides once
+   a value is actually picked. */
+.due-date-wrap {
+  position: relative;
+  flex: 0 0 108px;
+}
 .capture-due .due-date-native {
   position: static;
   display: block;
-  flex: 0 0 108px;
   width: 108px;
   min-width: 108px;
   height: 34px;
@@ -379,6 +387,19 @@ main {
   border-color: var(--ink);
   color: var(--ink);
 }
+
+.due-date-placeholder {
+  position: absolute;
+  left: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+  opacity: 0.55;
+  pointer-events: none;
+}
+.due-date-placeholder.hidden { display: none; }
 
 .capture-row {
   display: flex;

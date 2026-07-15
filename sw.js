@@ -2,7 +2,7 @@
 // Caches the app shell only. Task data is never cached here — app.js
 // keeps its own localStorage snapshot so offline behavior stays predictable.
 
-const CACHE_NAME = "tasks-shell-v9";
+const CACHE_NAME = "tasks-shell-v10";
 const SHELL = [
   "./",
   "./index.html",

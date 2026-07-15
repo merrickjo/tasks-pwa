@@ -251,10 +251,17 @@ function renderDueChips() {
     btn.classList.toggle("active", quickAddDue === val);
   });
   const customInput = document.getElementById("new-due-custom");
+  const placeholder = document.getElementById("due-date-placeholder");
   if (customInput) {
     const isCustom = quickAddDue && quickAddDue !== t && quickAddDue !== tm;
     customInput.classList.toggle("active", !!isCustom);
     if (!isCustom) customInput.value = ""; // clear the visible field when a fixed chip wins
+    // FIX v5: <input type="date"> has no working placeholder attribute in
+    // any browser, so the field read as an unlabeled empty box. The "Date"
+    // label sits under it and hides only once the field genuinely has a
+    // value — driven from here since this is the one place both the chip
+    // clicks and the native picker's change event already funnel through.
+    if (placeholder) placeholder.classList.toggle("hidden", !!customInput.value);
   }
 }
 document.querySelectorAll(".due-chip[data-due]").forEach((btn) => {
