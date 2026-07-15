@@ -293,37 +293,54 @@ main {
 
 /* backlog 1.5: due-date quick-add. Compact chips, not a date picker as the
    primary control — capture stays one-thumb (1.4 principle). The calendar
-   chip opens the native <input type="date"> for arbitrary dates only. */
+   chip opens the native <input type="date"> for arbitrary dates only.
+   FIX (post-ship, 15 Jul): this row originally had no overflow handling,
+   so it visibly broke — chip text clipped ("Too", "Tmi") at real phone
+   widths. Same scrollable-row structure as .chips above, which is
+   field-tested and doesn't have this problem. */
 .capture-due {
   display: flex;
   gap: 6px;
   margin-bottom: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
   position: relative;
 }
+.capture-due::-webkit-scrollbar { display: none; }
 
 .due-chip {
   flex: none;
+  white-space: nowrap;
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 12px;
   letter-spacing: 0.02em;
-  padding: 6px 10px;
+  padding: 5px 11px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: transparent;
   color: var(--ink-soft);
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 .due-chip.active {
   background: var(--ink);
   color: var(--bg);
   border-color: var(--ink);
 }
-.due-chip-cal { padding: 6px 9px; }
+.due-chip-cal { padding: 5px 10px; }
 
-/* the date input is triggered programmatically by the calendar chip and
-   never shown itself — it just supplies the native OS date picker UI */
+/* FIX (post-ship, 15 Jul): 1px/opacity:0 did NOT actually hide this on iOS
+   Safari — it rendered a native "JUL 17" mini calendar badge inline, which
+   is what was actually squeezing the other chips out of view (not a click
+   handler bug). display:none isn't an option either — showPicker() throws
+   on an element with no box. Pushing it off-screen with position:fixed
+   keeps it "rendered" (so showPicker() still works) while genuinely
+   invisible, regardless of the browser's own control chrome size. */
 .due-picker-hidden {
-  position: absolute;
+  position: fixed;
+  top: -9999px;
+  left: -9999px;
   width: 1px;
   height: 1px;
   opacity: 0;
