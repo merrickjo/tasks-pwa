@@ -335,18 +335,146 @@ function render(allTasks) {
     weekday: "long", month: "short", day: "numeric",
   });
 
+  // Phase 3 req 7 -- the mandate strip is independent of Notion task state
+  // and every Tasks view, so it renders on every call here, not gated on
+  // whether the current view has any Notion tasks.
+  renderConcursusStrip();
+
+  list.innerHTML = "";
+  // Phase 3 req 5 -- the CONCURSUS · TODAY group renders above every
+  // Notion-backed group, in every view (All / Sunday Prep / Workday /
+  // Weekend), independent of whether THIS view's Notion filter matches
+  // anything. It's a no-op (renders nothing) when there's no roll today,
+  // which is also why this must run before the empty-view early return
+  // below -- an empty Notion view is not the same thing as nothing to show.
+  renderConcursusGroup(list);
+
   if (!tasks.length) {
-    list.innerHTML = `<div class="empty">${view.empty}</div>`;
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = view.empty;
+    list.appendChild(empty);
     return;
   }
 
-  list.innerHTML = "";
   if (view.grouping === "area") {
     renderAreaGroups(list, tasks);
   } else {
     renderDateGroups(list, tasks);
   }
 }
+
+// --- Phase 3: CONCURSUS · TODAY projection (roll-to-Tasks) ---
+// Synthetic, local-only rows. Never touches tasks-cache-v2, never calls
+// apiFetch/api() -- completion here only ever calls CONCURSUS.toggleDomain(),
+// which writes exclusively to concursus-state-v1 (req 10).
+
+function renderConcursusStrip() {
+  const strip = document.getElementById("concursus-strip");
+  if (!strip) return;
+  // Defensive: boot() calls render() synchronously (before its first
+  // await), which happens before concursus.js -- the next <script> tag --
+  // has executed. CONCURSUS won't exist yet on that very first call. Every
+  // later render() call (post-boot, post-DOMContentLoaded) is safe; this
+  // guard only covers that one early window rather than relying on timing.
+  if (typeof CONCURSUS === "undefined") return;
+  const s = CONCURSUS.status();
+  if (s.roll === null) {
+    strip.classList.remove("show", "carpe");
+    strip.textContent = "";
+    return;
+  }
+  strip.classList.add("show");
+  if (s.carpe) {
+    strip.classList.add("carpe");
+    strip.textContent = "⚡ CARPE POINT EARNED";
+  } else {
+    strip.classList.remove("carpe");
+    strip.textContent = `CONCURSUS · Roll ${s.roll} · ${s.done}/4`;
+  }
+}
+
+// Fixed order (req 5): CONCURSUS.getProjectedTasks() already returns
+// Intake, Synthesis, Exercise, Scripture in that order (DOMAIN_KEYS in
+// concursus.js) -- rendered here in the order given, not re-sorted.
+function renderConcursusGroup(list) {
+  if (typeof CONCURSUS === "undefined") return; // see renderConcursusStrip()
+  const projected = CONCURSUS.getProjectedTasks(); // [] before a roll, or on a fail-closed resolution error
+  if (!projected.length) return;
+
+  const h = document.createElement("div");
+  h.className = "section-label concursus-group-label";
+  h.textContent = "CONCURSUS · TODAY";
+  list.appendChild(h);
+  projected.forEach((t) => list.appendChild(renderConcursusRow(t)));
+}
+
+function renderConcursusRow(task) {
+  const row = document.createElement("div");
+  row.className = "row concursus-row" + (task.completed ? " completed" : "");
+  row.dataset.id = task.id;
+
+  const check = document.createElement("button");
+  check.className = "check" + (task.completed ? " checked" : "");
+  check.setAttribute("aria-label",
+    (task.completed ? "Mark incomplete: " : "Mark done: ") + task.title);
+  check.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="4,13 9,18 20,6"/></svg>`;
+  check.addEventListener("click", (e) => {
+    e.stopPropagation();
+    // req 6 -- the only mutation path, shared with the CONCURSUS tab. Its
+    // own subscribe notification (wired in initTabRouter) re-renders this
+    // surface too, but re-render directly here as well so a same-tab tap
+    // doesn't depend on that ordering to feel immediate.
+    CONCURSUS.toggleDomain(task.domain);
+    const all = sortTasks(getCache());
+    render(all);
+  });
+
+  const body = document.createElement("div");
+  body.className = "row-body";
+  // No click-to-edit listener: req 5 -- this group can't be reassigned,
+  // reordered, or given a due date, so there's no edit sheet for it.
+  body.style.cursor = "default";
+
+  const eyebrow = document.createElement("div");
+  eyebrow.className = "row-eyebrow";
+  eyebrow.textContent = "CONCURSUS · " + task.domain.toUpperCase();
+
+  const title = document.createElement("div");
+  title.className = "row-title";
+  title.textContent = task.title;
+
+  const detail = document.createElement("div");
+  detail.className = "row-detail";
+  detail.textContent = task.detail;
+
+  body.appendChild(eyebrow);
+  body.appendChild(title);
+  body.appendChild(detail);
+
+  if (task.href) {
+    const a = document.createElement("a");
+    a.href = task.href;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.className = "row-link";
+    a.textContent = "Open Novaxa ↗";
+    a.addEventListener("click", (e) => e.stopPropagation());
+    body.appendChild(a);
+  }
+
+  row.appendChild(check);
+  row.appendChild(body);
+  return row;
+}
+
+document.getElementById("concursus-strip").addEventListener("click", () => setActiveTab("concursus"));
+document.getElementById("concursus-strip").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault();
+    setActiveTab("concursus");
+  }
+});
 
 // Smart views: fixed date grouping — Overdue / Today / Upcoming.
 function renderDateGroups(list, tasks) {
@@ -912,8 +1040,18 @@ async function boot() {
     if (hasCacheMetadata()) {
       document.getElementById("offline-banner").classList.add("show");
     } else {
-      document.getElementById("list").innerHTML =
-        `<div class="empty">Can't reach the server. Check your connection or Worker URL.</div>`;
+      // Phase 3 req 11 -- CONCURSUS is pure localStorage and works fully
+      // offline even on a first-ever launch with zero synced Notion cache.
+      // Render its strip/group before the "can't reach server" message
+      // instead of overwriting #list wholesale, which used to hide it.
+      renderConcursusStrip();
+      const list = document.getElementById("list");
+      list.innerHTML = "";
+      renderConcursusGroup(list);
+      const err = document.createElement("div");
+      err.className = "empty";
+      err.textContent = "Can't reach the server. Check your connection or Worker URL.";
+      list.appendChild(err);
     }
   }
 }
@@ -979,7 +1117,23 @@ document.getElementById("tabbar").querySelectorAll(".tab-btn").forEach((btn) => 
   btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
 });
 
+let concursusSubscribed = false;
+
 function initTabRouter() {
+  // Phase 3 req 6/7 -- one subscription, fired on every committed CONCURSUS
+  // mutation regardless of which tab caused it (roll, re-roll, toggle, or
+  // the daily reset picked up on its next status() read). Keeps the Tasks
+  // surface's hidden DOM in sync even while CONCURSUS is the visible tab,
+  // not just at the moment of switching back. Guarded so a hypothetical
+  // second initTabRouter() call never double-subscribes.
+  if (!concursusSubscribed) {
+    CONCURSUS.subscribe(() => {
+      const all = sortTasks(getCache());
+      render(all);
+    });
+    concursusSubscribed = true;
+  }
+
   let initialTab = "tasks";
   try {
     const stored = sessionStorage.getItem(TAB_SESSION_KEY);
