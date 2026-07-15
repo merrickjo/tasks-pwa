@@ -15,6 +15,61 @@
 const DEFAULT_DATA_SOURCE_ID = "38a78f87-f38b-43b7-9494-eda5cf171f68";
 const NOTION_VERSION = "2025-09-03";
 
+// BUG-01: Workers run on UTC. new Date().toISOString() gives the UTC date,
+// which in Asia/Jakarta (UTC+7) is *yesterday* between 00:00 and 07:00
+// local. Same bug class v3 fixed app-side (see app.js localISO()). Used for
+// both the Completed-at stamp in updateTask() and the `since` boundary in
+// listCompletedTasks() — both had the same UTC math.
+function jakartaISO(d = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(d);
+}
+
+// BUG-07: Worker-side input validation. Invalid payloads used to pass
+// straight to Notion and surface as generic 500s. Reject early with a
+// 400 { error, field } instead; 500 stays reserved for Notion/runtime
+// failures. Vocabularies below are grounded in what the app and the rest
+// of this file actually send/use — not guessed.
+const AREA_NAMES = ["Church", "Blibli", "Fitness", "Family", "Personal"];
+const PRIORITY_NAMES = ["P1 - Critical", "P2 - High", "P3 - Medium", "P4 - Low"];
+const STATUS_NAMES = ["To do", "Done", "Canceled"];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function validationError(field, message) {
+  const e = new Error(message);
+  e.field = field;
+  e.isValidation = true;
+  return e;
+}
+
+// partial: true for PATCH (all fields optional, but must be valid if present).
+// partial: false for POST (title is required).
+// area/due accept explicit null on PATCH — that's how the app clears them
+// (see updateTask()); only a non-null, non-empty value has to match the enum.
+function validateInput(input, { partial }) {
+  if (!input || typeof input !== "object") {
+    throw validationError("body", "request body must be a JSON object");
+  }
+  if (!partial || input.title !== undefined) {
+    const title = typeof input.title === "string" ? input.title.trim() : "";
+    if (!title || title.length > 200) {
+      throw validationError("title", "title must be a non-empty string of 200 characters or fewer");
+    }
+  }
+  if (input.area !== undefined && input.area !== null && input.area !== "" && !AREA_NAMES.includes(input.area)) {
+    throw validationError("area", "area must be one of: " + AREA_NAMES.join(", ") + ", or null to clear");
+  }
+  if (input.priority !== undefined && !PRIORITY_NAMES.includes(input.priority)) {
+    throw validationError("priority", "priority must be one of: " + PRIORITY_NAMES.join(", "));
+  }
+  if (input.due !== undefined && input.due !== null && !DATE_RE.test(input.due)) {
+    throw validationError("due", "due must be formatted YYYY-MM-DD, or null to clear");
+  }
+  if (input.status !== undefined && !STATUS_NAMES.includes(input.status)) {
+    throw validationError("status", "status must be one of: " + STATUS_NAMES.join(", "));
+  }
+}
+
 function corsHeaders(env) {
   return {
     "access-control-allow-origin": env.ALLOWED_ORIGIN || "*",
@@ -53,9 +108,28 @@ function simplify(page) {
     status: p["Status"]?.status?.name || null,
     priority: p["Priority"]?.select?.name || null,
     due: p["Due"]?.date?.start || null,
+    area: p["Area"]?.select?.name || null, // 0.1
     label: p["Labels"]?.multi_select?.[0]?.name || null,
     notes: p["Notes"]?.rich_text?.[0]?.plain_text || "",
+    completedAt: p["Completed at"]?.date?.start || null, // 0.3
   };
+}
+
+// 0.2 — cursor pagination: follows next_cursor until exhausted. Without
+// this, any query past 100 rows silently truncates — the exact "source of
+// truth window" failure mode this app exists to avoid.
+async function queryAll(env, dataSourceId, body) {
+  const results = [];
+  let cursor;
+  do {
+    const page = await notion(env, `/data_sources/${dataSourceId}/query`, {
+      method: "POST",
+      body: JSON.stringify(cursor ? { ...body, start_cursor: cursor } : body),
+    });
+    results.push(...page.results);
+    cursor = page.has_more ? page.next_cursor : undefined;
+  } while (cursor);
+  return results;
 }
 
 async function listOpenTasks(env) {
@@ -70,11 +144,29 @@ async function listOpenTasks(env) {
     sorts: [{ property: "Due", direction: "ascending" }],
     page_size: 100,
   };
-  const result = await notion(env, `/data_sources/${dataSourceId}/query`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-  return result.results.map(simplify);
+  const results = await queryAll(env, dataSourceId, body);
+  return results.map(simplify);
+}
+
+// 0.3 — completed tasks, for the weekly review screen (2.3). `since` uses
+// Jakarta-local date math (BUG-01) — the same UTC bug that hit the
+// Completed-at stamp would otherwise misdraw the review window at the
+// 00:00–07:00 Jakarta boundary.
+async function listCompletedTasks(env, days) {
+  const dataSourceId = env.DATA_SOURCE_ID || DEFAULT_DATA_SOURCE_ID;
+  const since = jakartaISO(new Date(Date.now() - days * 86400000));
+  const body = {
+    filter: {
+      and: [
+        { property: "Status", status: { equals: "Done" } },
+        { property: "Completed at", date: { on_or_after: since } },
+      ],
+    },
+    sorts: [{ property: "Completed at", direction: "descending" }],
+    page_size: 100,
+  };
+  const results = await queryAll(env, dataSourceId, body);
+  return results.map(simplify);
 }
 
 async function createTask(env, input) {
@@ -85,6 +177,7 @@ async function createTask(env, input) {
     Priority: { select: { name: input.priority || "P3 - Medium" } },
     Source: { select: { name: "Manual" } },
   };
+  if (input.area) properties["Area"] = { select: { name: input.area } }; // 0.1
   if (input.due) properties["Due"] = { date: { start: input.due } };
   if (input.notes) properties["Notes"] = { rich_text: [{ text: { content: input.notes } }] };
 
@@ -104,12 +197,13 @@ async function updateTask(env, pageId, input) {
     properties["Status"] = { status: { name: input.status } };
     properties["Completed at"] =
       input.status === "Done"
-        ? { date: { start: new Date().toISOString().slice(0, 10) } }
+        ? { date: { start: jakartaISO() } } // BUG-01
         : { date: null };
   }
   if (input.title) properties["Task Name"] = { title: [{ text: { content: input.title } }] };
   if (input.due !== undefined) properties["Due"] = input.due ? { date: { start: input.due } } : { date: null };
   if (input.priority) properties["Priority"] = { select: { name: input.priority } };
+  if (input.area !== undefined) properties["Area"] = input.area ? { select: { name: input.area } } : { select: null }; // 0.1
 
   const page = await notion(env, `/pages/${pageId}`, {
     method: "PATCH",
@@ -124,16 +218,7 @@ export default {
       return new Response(null, { headers: corsHeaders(env) });
     }
 
-    const gotKey = request.headers.get("x-app-key") || "";
-    const envKey = env.APP_KEY || "";
-    console.log("auth check", {
-      gotLen: gotKey.length,
-      envLen: envKey.length,
-      match: gotKey === envKey,
-      envKeyIsSet: !!env.APP_KEY,
-    });
-
-    if (gotKey !== envKey) {
+    if ((request.headers.get("x-app-key") || "") !== (env.APP_KEY || "")) {
       return json({ error: "unauthorized" }, 401, env);
     }
 
@@ -145,13 +230,44 @@ export default {
         const tasks = await listOpenTasks(env);
         return json({ tasks }, 200, env);
       }
+      // 0.3 — must be matched before the generic /api/tasks/:id PATCH route
+      if (parts[0] === "api" && parts[1] === "tasks" && parts[2] === "completed" && request.method === "GET") {
+        const days = Math.min(Math.max(parseInt(url.searchParams.get("days") || "30", 10) || 30, 1), 365);
+        const tasks = await listCompletedTasks(env, days);
+        return json({ tasks }, 200, env);
+      }
       if (parts[0] === "api" && parts[1] === "tasks" && !parts[2] && request.method === "POST") {
-        const input = await request.json();
+        let input;
+        try {
+          input = await request.json();
+        } catch {
+          return json({ error: "body must be valid JSON", field: "body" }, 400, env);
+        }
+        try {
+          validateInput(input, { partial: false });
+        } catch (e) {
+          if (e.isValidation) return json({ error: e.message, field: e.field }, 400, env);
+          throw e;
+        }
         const task = await createTask(env, input);
         return json(task, 201, env);
       }
       if (parts[0] === "api" && parts[1] === "tasks" && parts[2] && request.method === "PATCH") {
-        const input = await request.json();
+        if (!UUID_RE.test(parts[2])) {
+          return json({ error: "task id must be a UUID", field: "id" }, 400, env);
+        }
+        let input;
+        try {
+          input = await request.json();
+        } catch {
+          return json({ error: "body must be valid JSON", field: "body" }, 400, env);
+        }
+        try {
+          validateInput(input, { partial: true });
+        } catch (e) {
+          if (e.isValidation) return json({ error: e.message, field: e.field }, 400, env);
+          throw e;
+        }
         const task = await updateTask(env, parts[2], input);
         return json(task, 200, env);
       }
