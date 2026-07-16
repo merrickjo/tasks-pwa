@@ -325,21 +325,29 @@ body {
   font-weight: 400;
 }
 
-/* 3.1 — background-mode override control. Text-only, mono, no chrome:
-   a data tag, not a feature. Sits on the date line, right-aligned. */
+/* 3.1 — background-mode override control, top right on the date line.
+   3.5 — relabeled icon-only (sun/moon): cream/charcoal is token
+   vocabulary, not UI copy; the glyph reads light/dark, which is what
+   users actually think. Still no chrome — a data-tag-weight control,
+   not a feature; glyph color rides --ink-soft same as the old text did,
+   contrast already gated (see 3.1 token block note). */
 .mode-toggle {
   position: absolute;
   top: var(--s-4);
   right: var(--s-5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: var(--s-2); /* generous tap slop, tap target stays ~24px+padding */
   border: none;
   background: transparent;
-  padding: 2px 0 2px var(--s-2); /* generous tap slop on the open side */
-  font-family: var(--font-mono);
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--ink-soft);
   cursor: pointer;
+}
+.mode-toggle svg {
+  display: block;
 }
 
 .banner {

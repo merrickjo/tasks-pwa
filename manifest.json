@@ -1,6 +1,6 @@
 {
-  "name": "Tasks",
-  "short_name": "Tasks",
+  "name": "Carpe",
+  "short_name": "Carpe",
   "description": "Personal task manifest, synced with Notion",
   "start_url": "./index.html",
   "scope": "./",

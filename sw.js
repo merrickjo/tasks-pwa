@@ -59,7 +59,13 @@
 // localStorage key tasks-theme-v1) + 3.2 motion tokens and inventory
 // (coral check-fill, FLIP completion reflow, token-driven durations).
 // Changed index.html, styles.css, app.js, manifest.json.
-const CACHE_NAME = "tasks-shell-v21";
+// v21 -> v22: 3.4 shell rename to "Carpe" (display strings only —
+// <title>, manifest.json name/short_name; repo path/scope/start_url and
+// the Worker's ALLOWED_ORIGIN are untouched) + 3.5 mode-toggle relabel
+// (icon-only sun/moon replaces the cream/charcoal text label; same
+// click handler, same tasks-theme-v1 contract, no storage or token
+// change). Changed index.html, manifest.json, app.js, styles.css.
+const CACHE_NAME = "tasks-shell-v22";
 const SHELL = [
   "./",
   "./index.html",

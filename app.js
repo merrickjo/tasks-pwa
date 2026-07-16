@@ -46,8 +46,18 @@ function applyTheme() {
     if (m) m.setAttribute("content", saved ? modeColor : (id === "meta-theme-dark" ? "#2C2C2C" : "#F5F1E8"));
   });
   const btn = document.getElementById("mode-toggle");
-  if (btn) btn.textContent = eff === "dark" ? "charcoal" : "cream";
+  if (btn) btn.innerHTML = eff === "dark" ? MODE_ICON_MOON : MODE_ICON_SUN;
 }
+
+// 3.5: icon-only relabel — cream/charcoal is token vocabulary, not UI
+// copy; users think light/dark, so the glyph carries that meaning
+// instead. currentColor inherits --ink-soft from .mode-toggle, which is
+// ≥4.5:1 on --bg in both modes (see 3.1 contrast-gate note) — well past
+// the 3:1 UI-glyph bound, so no text fallback is needed. Icon mirrors the
+// prior text state (sun = cream/light active, moon = charcoal/dark
+// active), same click/storage contract as before.
+const MODE_ICON_SUN = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><line x1="12" y1="2" x2="12" y2="4"></line><line x1="12" y1="20" x2="12" y2="22"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="2" y1="12" x2="4" y2="12"></line><line x1="20" y1="12" x2="22" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>';
+const MODE_ICON_MOON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
 document.getElementById("mode-toggle").addEventListener("click", () => {
   const next = (savedTheme() || systemTheme()) === "dark" ? "light" : "dark";
   try { localStorage.setItem(THEME_KEY, next); } catch {}
