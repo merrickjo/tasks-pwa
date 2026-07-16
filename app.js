@@ -391,13 +391,13 @@ function renderConcursusStrip() {
     strip.textContent = "⚡ CARPE POINT EARNED";
   } else {
     strip.classList.remove("carpe");
-    strip.textContent = `CONCURSUS · Roll ${s.roll} · ${s.done}/4`;
+    strip.textContent = `CONCURSUS · Roll ${s.roll} · ${s.done}/${s.total}`;
   }
 }
 
 // Fixed order (req 5): CONCURSUS.getProjectedTasks() already returns
-// Intake, Synthesis, Exercise, Scripture in that order (DOMAIN_KEYS in
-// concursus.js) -- rendered here in the order given, not re-sorted.
+// Intake, Synthesis, Exercise, Scripture, Family in that order (DOMAIN_KEYS
+// in concursus.js, DM3-01) -- rendered here in the order given, not re-sorted.
 function renderConcursusGroup(list) {
   if (typeof CONCURSUS === "undefined") return; // see renderConcursusStrip()
   const projected = CONCURSUS.getProjectedTasks(); // [] before a roll, or on a fail-closed resolution error

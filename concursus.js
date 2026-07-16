@@ -1,11 +1,17 @@
-// concursus.js — CONCURSUS tab (Domain model v2) for the Tasks PWA
+// concursus.js — CONCURSUS tab (Domain model v3 — DM3-01 adds FAMILY) for
+// the Tasks PWA.
 // Load order: AFTER app.js — reuses the global localISO(), the one date
 // function this codebase trusts. Never toISOString()/toDateString() here
 // for storage keys (Phase 0 req 9 / Phase 1 req 9).
 //
-// Storage is namespaced under concursus-state-v1 and never reads or writes
+// Storage is namespaced under concursus-state-v2 and never reads or writes
 // tasks-cache-v2, tasks-cache-v1, tasks-cfg-v1, tasks-groups-collapsed-v1,
 // or any Tasks view state (Phase 1 req 7).
+//
+// DM3-01: v1 -> v2 bump adds the `family` domain to `done`. Migration is
+// same-day only and chains: v2 present -> use it; else try v1 -> v2; else
+// try the ancient pre-v1 key -> v2 directly. Legacy keys are removed only
+// after their v2 write succeeds (DM3-01 acceptance test).
 //
 // Public surface (Phase 1 req 3 / req 10): init, status, mandateFor,
 // getProjectedTasks, toggleDomain, subscribe. Everything else here is
@@ -14,10 +20,11 @@
 // is allowed to depend on.
 
 const CONCURSUS = (() => {
-  const STATE_KEY = "concursus-state-v1";
+  const STATE_KEY = "concursus-state-v2";
+  const OLD_V1_KEY = "concursus-state-v1";
   const LEGACY_STATE_KEY = "concursus_state";
   const NOVAXA_URL = "https://merrickjo.github.io/novaxa-fitness/";
-  const DOMAIN_KEYS = ["intake", "synthesis", "exercise", "scripture"];
+  const DOMAIN_KEYS = ["intake", "synthesis", "exercise", "scripture", "family"];
 
   // ---------- Domain model v2 ----------
   // Exact protocol language retained from the frozen standalone source.
@@ -48,6 +55,56 @@ const CONCURSUS = (() => {
     { name: "Novaxa Session — 30 min", detail: "Generate today's session from Novaxa's recovery logic and complete 30 minutes.", href: NOVAXA_URL },
   ];
 
+  // DM3-01 — FAMILY domain (Domain model v3). One rolled, fully-present
+  // 20-minute block on one named person: T (as husband), B (as dad, age 4,
+  // narrative+ritual channel), or E (as dad, age 1, body channel).
+  // Roll table is an explicit 20-slot lookup, not modular, because the
+  // per-mandate counts are uneven (3/3/2/2/2/2/3/3). Verified distribution:
+  // T=8 (petaInternal 3, deposit201 3, sharedPrayer 2), B=6 (childLed 2,
+  // loudWindow 2, storyQuestions 2), E=6 (floorTime 3, handlingRhythm 3).
+  const FAMILY_MANDATES = {
+    petaInternal:   { name: "Peta Internal — T",     detail: "Map her current inner world: what's weighing, what she's hoping for. Questions only — no fixing, no agenda." },
+    deposit201:     { name: "20:1 Deposit — T",      detail: "Deliberate appreciation: verbal and enacted, specific, same evening." },
+    sharedPrayer:   { name: "Shared Prayer — T",     detail: "Pray together; each prays for a weakness the other has named." },
+    childLed:       { name: "Child-Led — B",         detail: "He picks. Zero correction, zero teaching." },
+    loudWindow:     { name: "Loud Window — B",       detail: "Designated loud play — garden, stairwell, car." },
+    storyQuestions: { name: "Story + Questions — B", detail: "Story, then answer questions as long as they come. The 400th question gets answered." },
+    floorTime:      { name: "Floor Time — E",        detail: "On the floor, face-level, respond to bids within seconds." },
+    handlingRhythm: { name: "Handling Rhythm — E",   detail: "Own the bedtime handoff — same sequence, same words." },
+  };
+
+  // Provisional (~70% confidence, per DM3-01): if Shared Prayer proves
+  // mechanical after two weeks of real rolls, swap rolls 19/20 in
+  // FAMILY_TABLE below from FAMILY_MANDATES.sharedPrayer to this. Counts
+  // stay T=8; no other row changes. Not wired in yet — trial is running.
+  const STATE_OF_THE_UNION_FALLBACK = {
+    name: "State of the Union — T",
+    detail: "Gottman-format check-in, 15–20 min: appreciations, one issue each, repair attempt, one forward plan.",
+  };
+
+  const FAMILY_TABLE = [
+    FAMILY_MANDATES.petaInternal,   // roll 1
+    FAMILY_MANDATES.childLed,       // roll 2
+    FAMILY_MANDATES.floorTime,      // roll 3
+    FAMILY_MANDATES.deposit201,     // roll 4
+    FAMILY_MANDATES.loudWindow,     // roll 5
+    FAMILY_MANDATES.handlingRhythm, // roll 6
+    FAMILY_MANDATES.petaInternal,   // roll 7
+    FAMILY_MANDATES.storyQuestions, // roll 8
+    FAMILY_MANDATES.floorTime,      // roll 9
+    FAMILY_MANDATES.deposit201,     // roll 10
+    FAMILY_MANDATES.childLed,       // roll 11
+    FAMILY_MANDATES.handlingRhythm, // roll 12
+    FAMILY_MANDATES.petaInternal,   // roll 13
+    FAMILY_MANDATES.loudWindow,     // roll 14
+    FAMILY_MANDATES.floorTime,      // roll 15
+    FAMILY_MANDATES.deposit201,     // roll 16
+    FAMILY_MANDATES.storyQuestions, // roll 17
+    FAMILY_MANDATES.handlingRhythm, // roll 18
+    FAMILY_MANDATES.sharedPrayer,   // roll 19
+    FAMILY_MANDATES.sharedPrayer,   // roll 20
+  ];
+
   // Exact daily non-negotiables retained from the standalone source.
   const NON_NEGOTIABLES = [
     ["Protein", "30g protein per meal minimum. At 83.9kg: 130–150g/day."],
@@ -57,6 +114,16 @@ const CONCURSUS = (() => {
     ["Rice", "Reduce rice portions by 30–40%; replace with protein or vegetables."],
     ["Sleep", "Stop eating three hours before sleep. Supports eGFR 88.3."],
     ["Coffee", "Default coffee: black or a splash of milk. Sweetened maximum 1–2 times per week."],
+  ];
+
+  // DM3-01 — FAMILY invariants. Rendered as a second, separate accordion
+  // (not merged into NON_NEGOTIABLES above) per the ticket's "floor vs.
+  // roll" framing: these are daily invariants layered under the FAMILY
+  // domain specifically, same pattern as the existing all-rolls section.
+  const FAMILY_NON_NEGOTIABLES = [
+    ["Blessing", "“[Name], the Lord bless you and keep you. The Lord make his face shine on you and be gracious to you. The Lord turn his face toward you and give you peace.” — hand on the head, both children, ≥ 6 nights/week."],
+    ["Repair", "Within 24h of failure: name the sin, ask forgiveness, no “but you.”"],
+    ["Phone", "Phone down when a child enters the room."],
   ];
 
   // Triad → books verified against the C EXEGESIS reading plans, 15 Jul 2026.
@@ -79,12 +146,13 @@ const CONCURSUS = (() => {
     { name: "Epilogue · Letters That Remain", books: "1–2 Thessalonians · 1–2 Timothy · Titus · Philemon · 2 Peter · 1–3 John · Jude" },
   ];
 
-  // ---------- Mandate derivation (Phase 1 req 10) ----------
-  // Deterministic and total: every integer 1–20 resolves all four domains.
+  // ---------- Mandate derivation (Phase 1 req 10 / DM3-01) ----------
+  // Deterministic and total: every integer 1–20 resolves all five domains.
   // Distribution across rolls 1–20: synthesis 5/5/5/5 · exercise 10/10 ·
   // intake 7/7/6 · scripture: odd rolls OT, even rolls NT, triads cycled —
-  // every triad appears at least once, eight appear twice. Tune by editing
-  // the arrays, not the math.
+  // every triad appears at least once, eight appear twice · family T 8/B 6/E 6
+  // (explicit FAMILY_TABLE lookup, uneven counts). Tune by editing the
+  // arrays/table, not the math.
   function mandateFor(roll) {
     if (!Number.isInteger(roll) || roll < 1 || roll > 20) {
       throw new RangeError("CONCURSUS.mandateFor: roll must be an integer 1–20, got " + roll);
@@ -98,12 +166,13 @@ const CONCURSUS = (() => {
       synthesis: SYNTHESIS[i % 4],
       exercise: EXERCISE[i % 2],
       scripture: { name: testament + " · " + triad.name, detail: triad.books },
+      family: FAMILY_TABLE[i],
     };
   }
 
   // ---------- State (local-midnight reset via localISO) ----------
   function blankState() {
-    return { date: localISO(), roll: null, done: { intake: false, synthesis: false, exercise: false, scripture: false } };
+    return { date: localISO(), roll: null, done: { intake: false, synthesis: false, exercise: false, scripture: false, family: false } };
   }
 
   function isValidState(s) {
@@ -117,8 +186,10 @@ const CONCURSUS = (() => {
     return true;
   }
 
-  // Phase 1 req 8 — legacy migration, attempted only when the canonical key
-  // is entirely absent, and only once (the legacy key is removed on success).
+  // Phase 1 req 8 — ancient pre-v1 migration, attempted only when the
+  // canonical v2 key is entirely absent (and only after migrateFromV1()
+  // below has already had its chance), and only once (the legacy key is
+  // removed on success).
   function migrateLegacy() {
     let legacy;
     try {
@@ -137,6 +208,7 @@ const CONCURSUS = (() => {
         synthesis: !!(legacy.done && legacy.done.synthesis),
         exercise: !!(legacy.done && legacy.done.exercise),
         scripture: !!(legacy.done && legacy.done.ot), // legacy key `ot` -> `scripture`
+        family: false, // DM3-01 — new domain, always starts fresh on migration
       },
     };
     try {
@@ -148,13 +220,50 @@ const CONCURSUS = (() => {
     }
   }
 
+  // DM3-01 — v1 -> v2 migration. Same-day only: a stale v1 record (from a
+  // previous day) is left in place and simply ignored, same as the ancient
+  // migration above; it isn't cleaned up, just never read again once v2
+  // exists. The v1 key is removed only after the v2 write succeeds
+  // (acceptance test requirement).
+  function migrateFromV1() {
+    let v1;
+    try {
+      v1 = JSON.parse(localStorage.getItem(OLD_V1_KEY));
+    } catch {
+      return null;
+    }
+    if (!v1 || typeof v1 !== "object") return null;
+    if (v1.date !== localISO()) return null;
+    if (v1.roll !== null && !(Number.isInteger(v1.roll) && v1.roll >= 1 && v1.roll <= 20)) return null;
+    const migrated = {
+      date: v1.date,
+      roll: v1.roll,
+      done: {
+        intake: !!(v1.done && v1.done.intake),
+        synthesis: !!(v1.done && v1.done.synthesis),
+        exercise: !!(v1.done && v1.done.exercise),
+        scripture: !!(v1.done && v1.done.scripture),
+        family: false, // new domain, always starts fresh on migration
+      },
+    };
+    try {
+      localStorage.setItem(STATE_KEY, JSON.stringify(migrated));
+      localStorage.removeItem(OLD_V1_KEY); // only after the v2 write succeeds
+      return migrated;
+    } catch {
+      return null;
+    }
+  }
+
   function loadState() {
     const raw = localStorage.getItem(STATE_KEY);
     if (raw === null) {
-      // Canonical key absent — this is the one point where legacy migration
-      // is attempted (Phase 1 req 8), never on subsequent loads.
-      const migrated = migrateLegacy();
-      if (migrated) return migrated;
+      // Canonical v2 key absent — try v1 -> v2 first (DM3-01), then the
+      // ancient pre-v1 key, in that order, never on subsequent loads.
+      const fromV1 = migrateFromV1();
+      if (fromV1) return fromV1;
+      const fromLegacy = migrateLegacy();
+      if (fromLegacy) return fromLegacy;
       return blankState();
     }
     let parsed;
@@ -201,7 +310,8 @@ const CONCURSUS = (() => {
   function status() {
     state = loadState();
     const done = DOMAIN_KEYS.filter((k) => state.done[k]).length;
-    return { date: state.date, roll: state.roll, done, total: 4, carpe: state.roll !== null && done === 4 };
+    const total = DOMAIN_KEYS.length; // DM3-01: 5, was 4
+    return { date: state.date, roll: state.roll, done, total, carpe: state.roll !== null && done === total };
   }
 
   // ---------- Projection (Phase 1 req 15, consumed by Phase 3) ----------
@@ -241,7 +351,7 @@ const CONCURSUS = (() => {
   let pendingRoll = null;
 
   function commitRoll(n) {
-    const next = { date: localISO(), roll: n, done: { intake: false, synthesis: false, exercise: false, scripture: false } };
+    const next = { date: localISO(), roll: n, done: { intake: false, synthesis: false, exercise: false, scripture: false, family: false } };
     pendingRoll = null;
     if (!saveState(next)) {
       lastError = "Couldn't save the roll — storage may be full. Try again.";
@@ -334,6 +444,7 @@ const CONCURSUS = (() => {
     ["synthesis", "Synthesis"],
     ["exercise", "Exercise"],
     ["scripture", "Scripture Triad"],
+    ["family", "Family"], // DM3-01 — no new palette color, eyebrow label + position only
   ];
 
   function el(tag, cls, text) {
@@ -421,7 +532,7 @@ const CONCURSUS = (() => {
 
     const rollLine = el("div", "cc-roll-line");
     rollLine.appendChild(el("span", "cc-roll-num", "ROLL " + state.roll));
-    rollLine.appendChild(el("span", "cc-roll-count", s.done + " / 4"));
+    rollLine.appendChild(el("span", "cc-roll-count", s.done + " / " + s.total));
     const reroll = el("button", "cc-reroll", "re-roll");
     reroll.addEventListener("click", () => requestRoll(randomRoll()));
     rollLine.appendChild(reroll);
@@ -471,6 +582,22 @@ const CONCURSUS = (() => {
     });
     nonneg.appendChild(nonnegList);
     root.appendChild(nonneg);
+
+    // DM3-01 — FAMILY invariants, a second accordion (not merged into the
+    // one above): the ticket treats these as a distinct layer under the
+    // FAMILY domain, same rendering pattern, reuses the same .cc-nonneg* CSS.
+    const familyNonneg = el("details", "cc-nonneg");
+    const familyNonnegSummary = el("summary", "cc-nonneg-summary", "FAMILY · DAILY INVARIANTS");
+    familyNonneg.appendChild(familyNonnegSummary);
+    const familyNonnegList = el("div", "cc-nonneg-list");
+    FAMILY_NON_NEGOTIABLES.forEach(([label, text]) => {
+      const item = el("div", "cc-nonneg-item");
+      item.appendChild(el("strong", "cc-nonneg-label", label));
+      item.appendChild(el("span", "cc-nonneg-text", text));
+      familyNonnegList.appendChild(item);
+    });
+    familyNonneg.appendChild(familyNonnegList);
+    root.appendChild(familyNonneg);
   }
 
   // ---------- init (Phase 1 req 4) ----------

@@ -28,7 +28,14 @@
 // the offline connection-error state with a false "No open tasks") all
 // changed app.js contents only -- bump needed or the fixes never reach an
 // already-installed PWA.
-const CACHE_NAME = "tasks-shell-v15";
+// v15 -> v16: DM3-01 (Domain model v3 -- FAMILY, the fifth mandate domain).
+// Changed contents of concursus.js (state v1->v2 migration, FAMILY roll
+// table/mandateFor, DOMAINS list, second Non-Negotiables accordion) and
+// app.js (strip text, comment) only -- no new files in SHELL, but a real
+// bump anyway per the same v12->v13 lesson above: without it this sw.js
+// would be byte-identical and an already-installed PWA would keep serving
+// the stale four-domain shell indefinitely.
+const CACHE_NAME = "tasks-shell-v16";
 const SHELL = [
   "./",
   "./index.html",
