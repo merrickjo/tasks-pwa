@@ -13,14 +13,17 @@
 // try the ancient pre-v1 key -> v2 directly. Legacy keys are removed only
 // after their v2 write succeeds (DM3-01 acceptance test).
 //
-// Public surface (Phase 1 req 3 / req 10): init, status, mandateFor,
-// getProjectedTasks, toggleDomain, subscribe. Everything else here is
+// Public surface (Phase 1 req 3 / req 10, extended by 2.1/2.2): init,
+// status, mandateFor, getProjectedTasks, toggleDomain, subscribe, history.
+// Everything else here is
 // private — storage parsing, roll derivation internals, re-roll timers,
 // and CONCURSUS's own DOM rendering are not part of the contract app.js
 // is allowed to depend on.
 
 const CONCURSUS = (() => {
   const STATE_KEY = "concursus-state-v2";
+  const HISTORY_KEY = "concursus-history-v1"; // 2.2 — local mandate history
+  const HISTORY_RETENTION_DAYS = 35; // rolling window; P2 UI reads the last 7
   const OLD_V1_KEY = "concursus-state-v1";
   const LEGACY_STATE_KEY = "concursus_state";
   const NOVAXA_URL = "https://merrickjo.github.io/novaxa-fitness/";
@@ -273,7 +276,14 @@ const CONCURSUS = (() => {
       return blankState(); // malformed storage resets safely
     }
     if (!isValidState(parsed)) return blankState();
-    if (parsed.date !== localISO()) return blankState(); // local-midnight boundary
+    if (parsed.date !== localISO()) {
+      // 2.2 — local-midnight boundary: archive the stale (but valid) day
+      // into history before today resets. Idempotent upsert; a day whose
+      // last completion change already wrote this exact snapshot is simply
+      // rewritten with the same truth.
+      upsertHistory(parsed);
+      return blankState();
+    }
     return parsed;
   }
 
@@ -284,6 +294,106 @@ const CONCURSUS = (() => {
     } catch {
       return false; // storage-write failure — caller keeps previous visible state
     }
+  }
+
+  // ---------- 2.2 — Local mandate-history contract ----------
+  // concursus-history-v1: { "<localISO date>": snapshot, ... }. Each snapshot
+  // stores roll, the five-domain done map, the resolved FAMILY person, and
+  // carpe. Local-only and offline by design: nothing here ever touches the
+  // Tasks cache, the Worker, or Notion. History is diagnostic truth for the
+  // P2 weekly rings (2.3/2.4) — it is written on every committed state
+  // change and when a stale day is archived, and read only through
+  // history(days) below.
+
+  // FAMILY person is resolved at snapshot time from the roll's mandate name
+  // (every FAMILY_MANDATES name ends "— T", "— B", or "— E"). Resolving at
+  // write time means a later roll-table change can never rewrite what a
+  // historical day actually assigned (2.2 acceptance: domain-model changes
+  // must not rewrite snapshots).
+  function familyPersonFor(roll) {
+    if (!Number.isInteger(roll) || roll < 1 || roll > 20) return null;
+    const m = /—\s*([TBE])$/.exec(FAMILY_TABLE[roll - 1].name);
+    return m ? m[1] : null;
+  }
+
+  function isValidSnapshot(rec) {
+    if (!rec || typeof rec !== "object") return false;
+    if (!(Number.isInteger(rec.roll) && rec.roll >= 1 && rec.roll <= 20)) return false;
+    if (!rec.done || typeof rec.done !== "object") return false;
+    // Validate the values, not a fixed key list: a future domain-model
+    // change must not invalidate (or rewrite) old snapshots. Every stored
+    // completion flag must be a real boolean, whatever the domain set was.
+    for (const k of Object.keys(rec.done)) {
+      if (typeof rec.done[k] !== "boolean") return false;
+    }
+    if (rec.familyPerson !== null && !["T", "B", "E"].includes(rec.familyPerson)) return false;
+    if (typeof rec.carpe !== "boolean") return false;
+    return true;
+  }
+
+  // Fail closed: a malformed history blob (or a non-object) reads as empty.
+  // It never throws into the caller and never touches today's canonical
+  // state under concursus-state-v2.
+  function loadHistory() {
+    let parsed;
+    try {
+      parsed = JSON.parse(localStorage.getItem(HISTORY_KEY));
+    } catch {
+      return {};
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return parsed;
+  }
+
+  function historyCutoffISO() {
+    const d = new Date();
+    d.setDate(d.getDate() - (HISTORY_RETENTION_DAYS - 1));
+    return localISO(d); // ISO date strings compare lexicographically
+  }
+
+  // Upsert one day's snapshot from a (valid) state object, prune the
+  // rolling window, write. Days with no roll are never written — a missing
+  // key IS the "ungoverned day" signal, surfaced (not omitted) by
+  // history(days). Write failures are swallowed: history is diagnostic,
+  // never load-bearing for today's state.
+  function upsertHistory(s) {
+    if (!s || s.roll === null) return;
+    const history = loadHistory();
+    history[s.date] = {
+      roll: s.roll,
+      done: { ...s.done },
+      familyPerson: familyPersonFor(s.roll),
+      carpe: DOMAIN_KEYS.every((k) => s.done[k]),
+    };
+    const cutoff = historyCutoffISO();
+    for (const key of Object.keys(history)) {
+      // Prune outside the retention window; drop non-date keys outright.
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || key < cutoff) delete history[key];
+    }
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    } catch {
+      /* storage full — today's canonical state is unaffected */
+    }
+  }
+
+  // Public read for the P2 UI: the last `days` calendar days ending today,
+  // oldest first. Every day is present in the result; a day with no valid
+  // snapshot carries snapshot: null (no-roll / ungoverned / corrupt record
+  // — all fail closed to the same visible "ungoverned" semantics).
+  function history(days = 7) {
+    const parsedDays = parseInt(days, 10);
+    const n = Math.min(Math.max(Number.isFinite(parsedDays) ? parsedDays : 7, 1), HISTORY_RETENTION_DAYS);
+    const stored = loadHistory();
+    const out = [];
+    for (let i = n - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const date = localISO(d);
+      const rec = stored[date];
+      out.push({ date, snapshot: isValidSnapshot(rec) ? { roll: rec.roll, done: { ...rec.done }, familyPerson: rec.familyPerson, carpe: rec.carpe } : null });
+    }
+    return out;
   }
 
   let state = loadState();
@@ -311,7 +421,16 @@ const CONCURSUS = (() => {
     state = loadState();
     const done = DOMAIN_KEYS.filter((k) => state.done[k]).length;
     const total = DOMAIN_KEYS.length; // DM3-01: 5, was 4
-    return { date: state.date, roll: state.roll, done, total, carpe: state.roll !== null && done === total };
+    return {
+      date: state.date,
+      roll: state.roll,
+      done,
+      total,
+      carpe: state.roll !== null && done === total,
+      // 2.1 — per-domain completion in fixed order, for the Mandate Ring.
+      // A copy, never a live reference into module state.
+      domains: { ...state.done },
+    };
   }
 
   // ---------- Projection (Phase 1 req 15, consumed by Phase 3) ----------
@@ -360,6 +479,7 @@ const CONCURSUS = (() => {
     }
     state = next;
     lastError = "";
+    upsertHistory(state); // 2.2 — roll and re-roll both land here
     render();
     notify();
     return true;
@@ -398,6 +518,7 @@ const CONCURSUS = (() => {
     }
     state = next;
     lastError = "";
+    upsertHistory(state); // 2.2 — every completion change updates today's snapshot
     render();
     notify();
     return true;
@@ -620,5 +741,5 @@ const CONCURSUS = (() => {
     }
   }
 
-  return { init, status, mandateFor, getProjectedTasks, toggleDomain, subscribe };
+  return { init, status, mandateFor, getProjectedTasks, toggleDomain, subscribe, history };
 })();
