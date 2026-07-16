@@ -191,6 +191,8 @@ body {
 main {
   flex: 1;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding-bottom: 96px;
 }
 
@@ -748,15 +750,21 @@ body.sheet-open { overflow: hidden; }
   gap: 4px;
   padding: 4px;
   border-radius: 8px;
+  border: 1px solid rgba(245, 241, 232, 0.14);
   background: var(--nk-charcoal); /* cream (Tasks) tab -> charcoal bar */
   transition: transform 0.15s ease;
 }
 body.concursus-active .tabbar {
   background: var(--nk-cream); /* charcoal (CONCURSUS) tab -> cream bar */
+  border-color: rgba(44, 44, 44, 0.14);
 }
 /* Nav spec: hide the bar while the keyboard is up so capture rides the
    keyboard alone (app.js toggles this class from a visualViewport listener). */
 body.keyboard-open .tabbar { display: none; }
+/* Capture alone goes full-width to bottom:0 with the keyboard up (no side
+   insets, unlike the nav pill), so the scrim has nothing to backstop and
+   would just be a stray solid block -- hide it alongside the nav. */
+body.keyboard-open .bottom-scrim { display: none; }
 
 .tab-btn {
   flex: 1;
@@ -799,8 +807,30 @@ body.concursus-active .tab-btn { color: var(--nk-charcoal); }
 body.keyboard-open .capture { bottom: 0; } /* capture alone follows the keyboard */
 
 main {
-  padding-bottom: calc(var(--capture-h) + var(--nk-tabbar-inset) + var(--nk-tabbar-h) + var(--nk-tabbar-inset) + env(safe-area-inset-bottom));
+  /* +16px safety margin over the computed stack height -- the box-model
+     math above was derived from source CSS, not a device measurement, so
+     a small buffer costs nothing but protects against exactly the "list
+     content peeking behind the nav" symptom if that math runs slightly
+     short in practice. */
+  padding-bottom: calc(var(--capture-h) + var(--nk-tabbar-inset) + var(--nk-tabbar-h) + var(--nk-tabbar-inset) + env(safe-area-inset-bottom) + 16px);
 }
+
+/* Solid backdrop behind the whole capture+nav stack. The floating pill nav
+   is intentionally inset 12px with rounded corners (roadmap nav spec) --
+   that leaves gaps where whatever is BEHIND it shows through. This
+   guarantees that's always plain page background, never a scrolled task
+   row, independent of whether the height variables above are pixel-exact. */
+.bottom-scrim {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9; /* below .capture (10) and .tabbar (20), above #list content */
+  height: calc(var(--capture-h) + var(--nk-tabbar-inset) + var(--nk-tabbar-h) + var(--nk-tabbar-inset) + env(safe-area-inset-bottom) + 16px);
+  background: var(--bg);
+  pointer-events: none;
+}
+body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
 
 /* ===== CONCURSUS tab — charcoal mode, flat, rule lines only ===== */
 #concursus-view {

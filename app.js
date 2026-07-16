@@ -44,6 +44,7 @@ function showApp() {
   document.getElementById("setup").style.display = "none";
   document.getElementById("app").style.display = "block";
   document.getElementById("tabbar").style.display = "flex";
+  document.getElementById("bottom-scrim").style.display = "block";
 }
 
 document.getElementById("cfg-save").addEventListener("click", () => {

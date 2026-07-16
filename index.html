@@ -123,6 +123,10 @@
      Text-only at 2 tabs per the decided scaling rule. app.js owns all
      routing logic (setActiveTab, click handlers, keyboard-hide behavior);
      this markup is the only thing index.html owns for CONCURSUS. -->
+<!-- Solid backdrop behind the capture+nav stack -- see styles.css
+     .bottom-scrim comment. Same visibility lifecycle as #tabbar. -->
+<div class="bottom-scrim" id="bottom-scrim" style="display:none"></div>
+
 <nav class="tabbar" id="tabbar" style="display:none">
   <button class="tab-btn active" data-tab="tasks" role="tab" aria-selected="true">TASKS</button>
   <button class="tab-btn" data-tab="concursus" role="tab" aria-selected="false">CONCURSUS</button>
