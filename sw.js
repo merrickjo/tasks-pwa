@@ -65,7 +65,18 @@
 // (icon-only sun/moon replaces the cream/charcoal text label; same
 // click handler, same tasks-theme-v1 contract, no storage or token
 // change). Changed index.html, manifest.json, app.js, styles.css.
-const CACHE_NAME = "tasks-shell-v22";
+// v22 -> v23: 3.5 follow-up fix — the toggle's box (24x24 with 8px
+// padding on all sides, border-box) was smaller than the SVG's own
+// intrinsic 14px size, so the flex layout shrank the icon well below
+// spec ("10x smaller" per on-device report). Also moved the button out
+// of absolute positioning pinned to the date line and into a new
+// .topbar-heading flex row alongside date+h1, so it's vertically
+// centered against the view title instead of floating by the small
+// date row above it. Icon bumped to 20px (CSS-driven, not just the SVG
+// attribute) in a properly sized 40px tap target. No contract change —
+// same click handler, same tasks-theme-v1 storage. Changed index.html,
+// styles.css, app.js.
+const CACHE_NAME = "tasks-shell-v23";
 const SHELL = [
   "./",
   "./index.html",

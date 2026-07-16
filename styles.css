@@ -200,6 +200,16 @@ body {
   letter-spacing: -0.01em;
 }
 
+/* 3.5: date+title as one block, toggle as a flex sibling vertically
+   centered against it — this is what actually aligns the icon with the
+   view title, rather than pinning it to the small date row above. */
+.topbar-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
 /* --- area filter chips --- */
 .chips {
   display: flex;
@@ -325,22 +335,26 @@ body {
   font-weight: 400;
 }
 
-/* 3.1 — background-mode override control, top right on the date line.
+/* 3.1 — background-mode override control.
    3.5 — relabeled icon-only (sun/moon): cream/charcoal is token
    vocabulary, not UI copy; the glyph reads light/dark, which is what
-   users actually think. Still no chrome — a data-tag-weight control,
-   not a feature; glyph color rides --ink-soft same as the old text did,
-   contrast already gated (see 3.1 token block note). */
+   users actually think. Lives in .topbar-heading now (flex sibling,
+   vertically centered against date+title) instead of being absolutely
+   positioned off the date line — that's what aligns it with the view
+   title. Icon size is set explicitly in CSS (20px, matching the 20px
+   h1 title weight) rather than relying on the SVG's own width/height
+   attributes, which a too-small button previously clipped down to a
+   sliver. Still no chrome — a data-tag-weight control, not a feature;
+   glyph color rides --ink-soft same as the old text did, contrast
+   already gated (see 3.1 token block note). */
 .mode-toggle {
-  position: absolute;
-  top: var(--s-4);
-  right: var(--s-5);
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: var(--s-2); /* generous tap slop, tap target stays ~24px+padding */
+  width: 40px;
+  height: 40px;
+  padding: 0;
   border: none;
   background: transparent;
   color: var(--ink-soft);
@@ -348,6 +362,9 @@ body {
 }
 .mode-toggle svg {
   display: block;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
 }
 
 .banner {
