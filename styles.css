@@ -79,7 +79,7 @@ body {
   background: transparent;
   color: var(--ink-soft);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 .chip.active {
   background: var(--ink);
@@ -273,6 +273,7 @@ main {
 .tag.p1 { color: var(--red); border-color: var(--red); }
 .tag.p2 { color: var(--amber); border-color: var(--amber); }
 .tag.due-overdue { color: var(--red); border-color: var(--red); }
+.tag.due-escalated { font-weight: 700; }
 
 .empty {
   padding: 60px 20px;
@@ -335,7 +336,7 @@ main {
   color: var(--ink-soft);
   line-height: 1.2;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 .due-chip.active {
   background: var(--ink);

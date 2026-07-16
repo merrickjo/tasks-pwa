@@ -82,6 +82,63 @@ function tomorrowISO() {
 function dueDate(due) {
   return due ? due.slice(0, 10) : null;
 }
+function parseLocalISODate(iso) {
+  const d = dueDate(iso);
+  if (!d) return null;
+  const parts = d.split("-").map((p) => parseInt(p, 10));
+  if (parts.length !== 3 || parts.some((p) => Number.isNaN(p))) return null;
+  return new Date(parts[0], parts[1] - 1, parts[2]);
+}
+function dayDiffFromToday(iso) {
+  const target = parseLocalISODate(iso);
+  const today = parseLocalISODate(todayISO());
+  if (!target || !today) return null;
+  return Math.round((target - today) / 86400000);
+}
+function shortDateLabel(iso, includeYear = false) {
+  const d = parseLocalISODate(iso);
+  if (!d) return dueDate(iso) || "";
+  const day = d.getDate();
+  const month = d.toLocaleDateString("en-US", { month: "short" });
+  return includeYear ? `${day} ${month} ${d.getFullYear()}` : `${day} ${month}`;
+}
+function fullDateLabel(iso) {
+  return shortDateLabel(iso, true);
+}
+function dueLabel(due, { suppressHeaderRepeat = false } = {}) {
+  const d = dueDate(due);
+  if (!d) return null;
+  const diff = dayDiffFromToday(d);
+  if (diff === null) return { text: d, aria: `due ${d}`, overdue: false, escalated: false };
+
+  const dueLocal = parseLocalISODate(d);
+  const todayLocal = parseLocalISODate(todayISO());
+  const visualAbsolute = shortDateLabel(d, dueLocal.getFullYear() !== todayLocal.getFullYear());
+  const spokenAbsolute = fullDateLabel(d);
+  if (diff < 0) {
+    const daysLate = Math.abs(diff);
+    return {
+      text: daysLate >= 14 ? `${daysLate}d late · ${shortDateLabel(d)}` : `${daysLate}d late`,
+      aria: `due ${spokenAbsolute}, ${daysLate} ${daysLate === 1 ? "day" : "days"} late`,
+      overdue: true,
+      escalated: daysLate >= 14,
+    };
+  }
+  if (diff === 0) {
+    if (suppressHeaderRepeat) return null;
+    return { text: "today", aria: `due ${spokenAbsolute}, today`, overdue: false, escalated: false };
+  }
+  if (diff === 1) return { text: "tomorrow", aria: `due ${spokenAbsolute}, tomorrow`, overdue: false, escalated: false };
+  if (d <= nextSundayISO()) {
+    return {
+      text: parseLocalISODate(d).toLocaleDateString("en-US", { weekday: "short" }),
+      aria: `due ${spokenAbsolute}`,
+      overdue: false,
+      escalated: false,
+    };
+  }
+  return { text: visualAbsolute, aria: `due ${spokenAbsolute}`, overdue: false, escalated: false };
+}
 function isOverdue(due) {
   const d = dueDate(due);
   return d && d < todayISO();
@@ -566,7 +623,7 @@ function renderDateGroups(list, tasks) {
     h.className = "section-label";
     h.textContent = label;
     list.appendChild(h);
-    group.forEach((t) => list.appendChild(renderRow(t)));
+    group.forEach((t) => list.appendChild(renderRow(t, { dateGroup: label })));
   });
 }
 
@@ -618,7 +675,7 @@ function renderAreaGroups(list, tasks) {
   });
 }
 
-function renderRow(task) {
+function renderRow(task, opts = {}) {
   const row = document.createElement("div");
   row.className = "row";
   row.dataset.id = task.id;
@@ -652,10 +709,16 @@ function renderRow(task) {
   meta.appendChild(prTag);
 
   if (task.due) {
-    const dueTag = document.createElement("span");
-    dueTag.className = "tag" + (isOverdue(task.due) ? " due-overdue" : "");
-    dueTag.textContent = dueDate(task.due);
-    meta.appendChild(dueTag);
+    const info = dueLabel(task.due, { suppressHeaderRepeat: opts.dateGroup === "Today" });
+    if (info) {
+      const dueTag = document.createElement("span");
+      dueTag.className = "tag due-label" +
+        (info.overdue ? " due-overdue" : "") +
+        (info.escalated ? " due-escalated" : "");
+      dueTag.textContent = info.text;
+      dueTag.setAttribute("aria-label", info.aria);
+      meta.appendChild(dueTag);
+    }
   }
 
   if (task.area) {

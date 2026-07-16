@@ -51,7 +51,10 @@
 // domain cards; domain totals + FAMILY coverage fold into a collapsed
 // TOTALS disclosure (inferable from the rings — drill-down, not layout).
 // Changed contents of concursus.js and styles.css.
-const CACHE_NAME = "tasks-shell-v19";
+// v19 -> v20: 2.5 relative due-date labels. Raw YYYY-MM-DD tags are now
+// decision-useful local-date labels, with Today-header suppression and
+// overdue escalation styling. Changed app.js and styles.css.
+const CACHE_NAME = "tasks-shell-v20";
 const SHELL = [
   "./",
   "./index.html",
