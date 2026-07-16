@@ -1047,30 +1047,90 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
    body except the CARPE state on the strip.
    =================================================================== */
 
-/* Mandate strip: hidden (display:none, no "show" class) until a roll
-   exists today -- toggled by app.js's renderConcursusStrip(). */
-.concursus-strip {
+/* 2.1 — Today's Mandate Ring: hidden (display:none, no "show" class) until
+   a roll exists today -- toggled by app.js's renderMandateRing(). One
+   segmented donut + direct labels; replaces the old text strip. Same coral
+   pill container as before: it is the tap-to-CONCURSUS affordance. */
+.mandate-ring {
   display: none;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
+  gap: 14px;
   margin: 0 20px 4px;
   padding: 10px 14px;
   border: 1px solid var(--nk-coral);
   border-radius: 8px;
   background: transparent;
-  color: var(--nk-coral);
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  letter-spacing: 0.04em;
-  text-align: center;
   cursor: pointer;
 }
-.concursus-strip.show { display: flex; }
-.concursus-strip.carpe {
+.mandate-ring.show { display: flex; }
+
+.ring-svg {
+  flex: none;
+  width: 56px;
+  height: 56px;
+}
+.ring-seg {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 7;
+}
+.ring-seg.done { stroke: var(--nk-coral); }
+/* One-shot fill-in on a confirmed completion write (class applied by
+   renderMandateRing only on the false→true render). Opacity only — no
+   layout properties, no bounce, quiet easing, inside the 160–220ms band. */
+.ring-seg.just-done { animation: ring-fill 200ms ease-out; }
+@keyframes ring-fill {
+  from { opacity: 0.25; }
+  to { opacity: 1; }
+}
+
+.ring-count {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  fill: var(--ink);
+}
+
+.ring-body { min-width: 0; }
+.ring-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+}
+.ring-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.ring-label.done { color: var(--ink); }
+.ring-label-state { color: var(--nk-coral); }
+.ring-label:not(.done) .ring-label-state { color: var(--ink-soft); }
+
+/* CARPE renders at 5/5 only — mode inversion, same brand moment as the
+   old carpe strip: filled coral, cream ink, segments and labels invert. */
+.ring-carpe {
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--nk-coral);
+}
+.mandate-ring.carpe {
   background: var(--nk-coral);
-  color: var(--bg);
   border-color: var(--nk-coral);
+}
+.mandate-ring.carpe .ring-seg.done { stroke: var(--nk-cream); }
+.mandate-ring.carpe .ring-count { fill: var(--nk-cream); }
+.mandate-ring.carpe .ring-label,
+.mandate-ring.carpe .ring-label.done,
+.mandate-ring.carpe .ring-label-state,
+.mandate-ring.carpe .ring-carpe { color: var(--nk-cream); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ring-seg.just-done { animation: none; }
 }
 
 .concursus-group-label { color: var(--nk-coral); }

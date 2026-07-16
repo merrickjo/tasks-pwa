@@ -35,7 +35,12 @@
 // bump anyway per the same v12->v13 lesson above: without it this sw.js
 // would be byte-identical and an already-installed PWA would keep serving
 // the stale four-domain shell indefinitely.
-const CACHE_NAME = "tasks-shell-v16";
+// v16 -> v17: 2.1 Today's Mandate Ring (segmented donut replaces the text
+// strip; #concursus-strip element renamed #mandate-ring) and 2.2 local
+// mandate-history contract (concursus-history-v1 writes in concursus.js).
+// Changed contents of index.html, app.js, concursus.js, and styles.css —
+// no new files in SHELL, real bump per the standing v12->v13 lesson.
+const CACHE_NAME = "tasks-shell-v17";
 const SHELL = [
   "./",
   "./index.html",

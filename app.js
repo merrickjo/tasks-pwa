@@ -336,10 +336,10 @@ function render(allTasks) {
     weekday: "long", month: "short", day: "numeric",
   });
 
-  // Phase 3 req 7 -- the mandate strip is independent of Notion task state
+  // Phase 3 req 7 -- the mandate ring is independent of Notion task state
   // and every Tasks view, so it renders on every call here, not gated on
   // whether the current view has any Notion tasks.
-  renderConcursusStrip();
+  renderMandateRing();
 
   list.innerHTML = "";
   // Phase 3 req 5 -- the CONCURSUS · TODAY group renders above every
@@ -370,9 +370,42 @@ function render(allTasks) {
 // apiFetch/api() -- completion here only ever calls CONCURSUS.toggleDomain(),
 // which writes exclusively to concursus-state-v1 (req 10).
 
-function renderConcursusStrip() {
-  const strip = document.getElementById("concursus-strip");
-  if (!strip) return;
+// 2.1 — Today's Mandate Ring. Replaces the old text strip
+// (`CONCURSUS · Roll N · n/5`) outright; the two are never rendered
+// together. One segmented donut, five mandate domains in fixed order —
+// Intake → Synthesis → Exercise → Scripture → Family — distinguished by
+// label and position, not five hues. Data comes exclusively from
+// CONCURSUS.status(); zero Worker or Notion calls on this path.
+const RING_DOMAINS = [
+  ["intake", "Intake"],
+  ["synthesis", "Synthesis"],
+  ["exercise", "Exercise"],
+  ["scripture", "Scripture"],
+  ["family", "Family"],
+];
+
+// One-shot completion animation bookkeeping: a segment animates only when
+// it flips incomplete → complete between two renders of the SAME local
+// date (i.e. after a confirmed local write). Mount (lastRingDone === null),
+// resume re-renders (no flip), midnight resets, and re-rolls (flips are
+// true → false only) all render statically — no replay, per acceptance.
+let lastRingDate = null;
+let lastRingDone = null;
+
+// 72° per segment, 10° gap → 62° arc, starting at 12 o'clock, clockwise.
+// Butt caps, not round: flat print-style geometry per the Signature Lock.
+function ringSegPath(i) {
+  const c = 32, r = 26, span = 62;
+  const start = -90 + i * 72 + 5;
+  const a1 = (start * Math.PI) / 180;
+  const a2 = ((start + span) * Math.PI) / 180;
+  const p = (a) => (c + r * Math.cos(a)).toFixed(2) + " " + (c + r * Math.sin(a)).toFixed(2);
+  return `M ${p(a1)} A ${r} ${r} 0 0 1 ${p(a2)}`;
+}
+
+function renderMandateRing() {
+  const ring = document.getElementById("mandate-ring");
+  if (!ring) return;
   // Defensive: boot() calls render() synchronously (before its first
   // await), which happens before concursus.js -- the next <script> tag --
   // has executed. CONCURSUS won't exist yet on that very first call. Every
@@ -381,18 +414,47 @@ function renderConcursusStrip() {
   if (typeof CONCURSUS === "undefined") return;
   const s = CONCURSUS.status();
   if (s.roll === null) {
-    strip.classList.remove("show", "carpe");
-    strip.textContent = "";
+    ring.classList.remove("show", "carpe");
+    ring.innerHTML = "";
+    ring.setAttribute("aria-label", "Open CONCURSUS");
+    lastRingDate = null;
+    lastRingDone = null;
     return;
   }
-  strip.classList.add("show");
-  if (s.carpe) {
-    strip.classList.add("carpe");
-    strip.textContent = "⚡ CARPE POINT EARNED";
-  } else {
-    strip.classList.remove("carpe");
-    strip.textContent = `CONCURSUS · Roll ${s.roll} · ${s.done}/${s.total}`;
-  }
+
+  const sameDay = lastRingDone !== null && lastRingDate === s.date;
+  const justDone = new Set(
+    RING_DOMAINS.filter(([k]) => sameDay && !lastRingDone[k] && s.domains[k]).map(([k]) => k)
+  );
+  lastRingDate = s.date;
+  lastRingDone = { ...s.domains };
+
+  const segs = RING_DOMAINS.map(([key], i) =>
+    `<path class="ring-seg${s.domains[key] ? " done" : ""}${justDone.has(key) ? " just-done" : ""}" d="${ringSegPath(i)}"/>`
+  ).join("");
+
+  const legend = RING_DOMAINS.map(([key, label]) => {
+    const done = s.domains[key];
+    return `<span class="ring-label${done ? " done" : ""}">${label} <span class="ring-label-state">${done ? "✓" : "—"}</span></span>`;
+  }).join("");
+
+  // CARPE renders at 5/5 and only at 5/5.
+  const carpeLine = s.carpe ? `<div class="ring-carpe">⚡ CARPE POINT EARNED</div>` : "";
+
+  ring.innerHTML =
+    `<svg class="ring-svg" viewBox="0 0 64 64" aria-hidden="true" focusable="false">${segs}` +
+    `<text class="ring-count" x="32" y="32" text-anchor="middle" dominant-baseline="central">${s.done}/${s.total}</text></svg>` +
+    `<div class="ring-body"><div class="ring-legend">${legend}</div>${carpeLine}</div>`;
+
+  // The container is a single button; its accessible name carries every
+  // segment's state directly, without relying on color or glyphs.
+  const states = RING_DOMAINS.map(([key, label]) => `${label} ${s.domains[key] ? "complete" : "incomplete"}`).join(", ");
+  ring.setAttribute("aria-label",
+    `Mandate ring: ${s.done} of ${s.total} complete. ${states}.` +
+    (s.carpe ? " Carpe point earned." : "") + " Opens CONCURSUS.");
+
+  ring.classList.add("show");
+  ring.classList.toggle("carpe", s.carpe);
 }
 
 // Fixed order (req 5): CONCURSUS.getProjectedTasks() already returns
@@ -476,8 +538,8 @@ function renderConcursusRow(task) {
   return row;
 }
 
-document.getElementById("concursus-strip").addEventListener("click", () => setActiveTab("concursus"));
-document.getElementById("concursus-strip").addEventListener("keydown", (e) => {
+document.getElementById("mandate-ring").addEventListener("click", () => setActiveTab("concursus"));
+document.getElementById("mandate-ring").addEventListener("keydown", (e) => {
   if (e.key === "Enter" || e.key === " ") {
     e.preventDefault();
     setActiveTab("concursus");
@@ -1050,9 +1112,9 @@ async function boot() {
     } else {
       // Phase 3 req 11 -- CONCURSUS is pure localStorage and works fully
       // offline even on a first-ever launch with zero synced Notion cache.
-      // Render its strip/group before the "can't reach server" message
+      // Render its ring/group before the "can't reach server" message
       // instead of overwriting #list wholesale, which used to hide it.
-      renderConcursusStrip();
+      renderMandateRing();
       const list = document.getElementById("list");
       list.innerHTML = "";
       renderConcursusGroup(list);
@@ -1104,10 +1166,10 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // Keep the tracked date in sync with every render path that touches the
-// CONCURSUS strip/group, not just this handler's own re-renders.
-const _origRenderConcursusStrip = renderConcursusStrip;
-renderConcursusStrip = function () {
-  _origRenderConcursusStrip();
+// CONCURSUS ring/group, not just this handler's own re-renders.
+const _origRenderMandateRing = renderMandateRing;
+renderMandateRing = function () {
+  _origRenderMandateRing();
   if (typeof CONCURSUS !== "undefined") {
     lastRenderedConcursusDate = CONCURSUS.status().date;
   }
