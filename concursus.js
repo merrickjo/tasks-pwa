@@ -396,6 +396,253 @@ const CONCURSUS = (() => {
     return out;
   }
 
+  // ---------- 2.3 — Weekly Mandate Review (private rendering) ----------
+  // Seven compact five-segment rings ending today, read exclusively from
+  // history(7) — never from live module state, so inspecting a day can't
+  // mutate anything. Fixed 2.1.1 domain color map, fixed order and start
+  // position (Intake at 12 o'clock, clockwise), identical across every
+  // day. The diagnosis is a compact interpretation of the same snapshots,
+  // not a separate feature. Local-only: zero Worker/Notion traffic.
+
+  const WK_DOMAINS = [
+    ["intake", "Intake"],
+    ["synthesis", "Synthesis"],
+    ["exercise", "Exercise"],
+    ["scripture", "Scripture"],
+    ["family", "Family"],
+  ];
+  const WK_PERSONS = ["T", "B", "E"];
+
+  // Same geometry as app.js's ringSegPath (72° per segment, 62° arc,
+  // 12 o'clock start, clockwise) — duplicated deliberately rather than
+  // reaching into app.js internals: ringSegPath is not part of any
+  // declared contract, and the geometry is the spec ("fixed order and
+  // starting position"), not an implementation detail to share.
+  function wkSegPath(i) {
+    const c = 32, r = 26, span = 62;
+    const start = -90 + i * 72 + 5;
+    const a1 = (start * Math.PI) / 180;
+    const a2 = ((start + span) * Math.PI) / 180;
+    const p = (a) => (c + r * Math.cos(a)).toFixed(2) + " " + (c + r * Math.sin(a)).toFixed(2);
+    return `M ${p(a1)} A ${r} ${r} 0 0 1 ${p(a2)}`;
+  }
+
+  // Ephemeral UI selection state — session-scoped, in-memory only. Not
+  // localStorage: highlight/inspection is a reading lens, not app state
+  // Notion (or the history contract) should ever see.
+  let wkSelectedDate = null;
+  let wkHlDomain = null;
+  let wkHlPerson = null;
+
+  // "2026-07-16" -> local Date. Never new Date("YYYY-MM-DD") — that parses
+  // as UTC and shifts the weekday in Jakarta (same bug class as todayISO).
+  function wkLocalDate(iso) {
+    const [y, m, d] = iso.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  }
+  const WK_WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  function wkStats(days) {
+    const domainDone = {};
+    WK_DOMAINS.forEach(([k]) => { domainDone[k] = 0; });
+    let carpe = 0;
+    const fam = { T: { assigned: 0, done: 0 }, B: { assigned: 0, done: 0 }, E: { assigned: 0, done: 0 } };
+    let governed = 0;
+    for (const day of days) {
+      const s = day.snapshot;
+      if (!s) continue;
+      governed += 1;
+      if (s.carpe) carpe += 1;
+      WK_DOMAINS.forEach(([k]) => { if (s.done[k]) domainDone[k] += 1; });
+      if (s.familyPerson && fam[s.familyPerson]) {
+        fam[s.familyPerson].assigned += 1;
+        if (s.done.family) fam[s.familyPerson].done += 1;
+      }
+    }
+    return { domainDone, carpe, fam, governed, total: days.length };
+  }
+
+  // One factual pattern sentence: name the least-fulfilled domain and any
+  // FAMILY person repeatedly missed (2+ misses on 2+ assignments). Never
+  // prescribes a mandate, never shames, never overrides the die.
+  function wkDiagnosis(stats) {
+    if (stats.governed === 0) {
+      return "No rolls in the last 7 days — nothing to read yet.";
+    }
+    const counts = WK_DOMAINS.map(([k, label]) => ({ k, label, n: stats.domainDone[k] }));
+    const min = Math.min(...counts.map((c) => c.n));
+    const least = counts.filter((c) => c.n === min).map((c) => c.label);
+    let sentence =
+      least.length === WK_DOMAINS.length
+        ? `All five mandates were fulfilled ${min} of ${stats.total} days.`
+        : `${least.join(" and ")} ${least.length > 1 ? "were" : "was"} fulfilled least — ${min} of ${stats.total} days.`;
+    const missed = WK_PERSONS.filter((p) => {
+      const f = stats.fam[p];
+      return f.assigned >= 2 && f.assigned - f.done >= 2;
+    });
+    if (missed.length) {
+      sentence += " " + missed.map((p) => {
+        const f = stats.fam[p];
+        return `FAMILY · ${p} was missed ${f.assigned - f.done} of ${f.assigned} assigned days`;
+      }).join("; ") + ".";
+    }
+    return sentence;
+  }
+
+  function wkDayRingSVG(day) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 64 64");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    const s = day.snapshot;
+    WK_DOMAINS.forEach(([key], i) => {
+      const track = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      track.setAttribute("class", "wk-track");
+      track.setAttribute("d", wkSegPath(i));
+      svg.appendChild(track);
+      if (!s) return; // no roll — empty neutral ring, tracks only
+      const seg = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      let cls = `wk-seg dom-${key}` + (s.done[key] ? " done" : "");
+      if (wkHlDomain && key !== wkHlDomain) cls += " mute";
+      seg.setAttribute("class", cls);
+      seg.setAttribute("d", wkSegPath(i));
+      svg.appendChild(seg);
+    });
+    return svg;
+  }
+
+  function wkDayAria(day, isToday) {
+    const d = wkLocalDate(day.date);
+    const dayName = `${WK_WEEKDAY[d.getDay()]} ${d.getDate()}` + (isToday ? " (today)" : "");
+    if (!day.snapshot) return `${dayName}: no roll.`;
+    const s = day.snapshot;
+    const states = WK_DOMAINS.map(([k, label]) =>
+      `${label}${k === "family" && s.familyPerson ? " (" + s.familyPerson + ")" : ""} ${s.done[k] ? "complete" : "incomplete"}`
+    ).join(", ");
+    const doneCount = WK_DOMAINS.filter(([k]) => s.done[k]).length;
+    return `${dayName}: roll ${s.roll}, ${doneCount} of 5 complete. ${states}.` + (s.carpe ? " Carpe." : "");
+  }
+
+  function buildWeeklyReview() {
+    const days = history(7);
+    const todayISOstr = localISO();
+    const stats = wkStats(days);
+
+    const wrap = el("section", "wk");
+    wrap.setAttribute("aria-label", "Weekly mandate review");
+
+    const kicker = el("div", "wk-kicker");
+    kicker.appendChild(el("span", "", "WEEKLY MANDATE REVIEW"));
+    kicker.appendChild(el("span", "wk-carpe", `CARPE ${stats.carpe}/${stats.total}`));
+    wrap.appendChild(kicker);
+
+    // Seven day rings, oldest first, today last and clearly identified.
+    const row = el("div", "wk-days");
+    days.forEach((day) => {
+      const isToday = day.date === todayISOstr;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "wk-day" + (isToday ? " today" : "") + (wkSelectedDate === day.date ? " selected" : "");
+      if (wkHlPerson && (!day.snapshot || day.snapshot.familyPerson !== wkHlPerson)) {
+        btn.classList.add("mute-day");
+      }
+      btn.setAttribute("aria-pressed", String(wkSelectedDate === day.date));
+      btn.setAttribute("aria-label", wkDayAria(day, isToday) + " Tap to inspect.");
+      btn.appendChild(wkDayRingSVG(day));
+      const d = wkLocalDate(day.date);
+      btn.appendChild(document.createTextNode(isToday ? "Today" : WK_WEEKDAY[d.getDay()]));
+      btn.addEventListener("click", () => {
+        // Inspection only — never touches concursus-state-v2 or history.
+        wkSelectedDate = wkSelectedDate === day.date ? null : day.date;
+        render();
+      });
+      row.appendChild(btn);
+    });
+    wrap.appendChild(row);
+
+    // Domain totals — x/7, tappable to highlight that domain's color and
+    // position across all seven rings.
+    const totals = el("div", "wk-totals");
+    WK_DOMAINS.forEach(([key, label]) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "wk-total";
+      btn.setAttribute("aria-pressed", String(wkHlDomain === key));
+      btn.setAttribute("aria-label",
+        `${label} fulfilled ${stats.domainDone[key]} of ${stats.total} days. Tap to highlight across the week.`);
+      const dot = el("i", `ring-dot dom-${key} done`);
+      dot.setAttribute("aria-hidden", "true");
+      btn.appendChild(dot);
+      btn.appendChild(document.createTextNode(`${label} ${stats.domainDone[key]}/${stats.total}`));
+      btn.addEventListener("click", () => {
+        wkHlDomain = wkHlDomain === key ? null : key;
+        wkHlPerson = null; // one highlight lens at a time
+        render();
+      });
+      totals.appendChild(btn);
+    });
+    wrap.appendChild(totals);
+
+    // FAMILY coverage — assigned vs completed, because the roll (not the
+    // user) controls opportunity. Tappable to highlight assigned days.
+    const famRow = el("div", "wk-family");
+    famRow.appendChild(el("span", "wk-family-label", "FAMILY"));
+    WK_PERSONS.forEach((p) => {
+      const f = stats.fam[p];
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "wk-total";
+      btn.setAttribute("aria-pressed", String(wkHlPerson === p));
+      btn.setAttribute("aria-label",
+        f.assigned
+          ? `${p}: completed ${f.done} of ${f.assigned} assigned days. Tap to highlight assigned days.`
+          : `${p}: not assigned this week.`);
+      btn.textContent = `${p} ${f.done}/${f.assigned}`;
+      btn.addEventListener("click", () => {
+        wkHlPerson = wkHlPerson === p ? null : p;
+        wkHlDomain = null;
+        render();
+      });
+      famRow.appendChild(btn);
+    });
+    wrap.appendChild(famRow);
+
+    // The diagnosis — derived only from snapshots, readable as plain text.
+    wrap.appendChild(el("p", "wk-diagnosis", wkDiagnosis(stats)));
+
+    // Day inspection panel — read-only view of one day's five outcomes and
+    // resolved FAMILY person; today's canonical state is never touched.
+    if (wkSelectedDate) {
+      const day = days.find((x) => x.date === wkSelectedDate);
+      if (day) {
+        const panel = el("div", "wk-detail");
+        const d = wkLocalDate(day.date);
+        const dateLabel = `${WK_WEEKDAY[d.getDay()]} ${d.getDate()}` + (day.date === todayISOstr ? " · Today" : "");
+        if (!day.snapshot) {
+          panel.appendChild(el("div", "wk-detail-head", dateLabel + " · No roll"));
+          panel.appendChild(el("div", "wk-detail-row", "The day was ungoverned — no mandate was assigned."));
+        } else {
+          const s = day.snapshot;
+          panel.appendChild(el("div", "wk-detail-head",
+            `${dateLabel} · Roll ${s.roll}` + (s.carpe ? " · ⚡ CARPE" : "")));
+          WK_DOMAINS.forEach(([key, label]) => {
+            const rowEl = el("div", "wk-detail-row" + (s.done[key] ? " done" : ""));
+            const dot = el("i", `ring-dot dom-${key}` + (s.done[key] ? " done" : ""));
+            dot.setAttribute("aria-hidden", "true");
+            rowEl.appendChild(dot);
+            const name = key === "family" && s.familyPerson ? `${label} · ${s.familyPerson}` : label;
+            rowEl.appendChild(document.createTextNode(name));
+            rowEl.appendChild(el("span", "wk-detail-state", s.done[key] ? "✓ complete" : "— incomplete"));
+            panel.appendChild(rowEl);
+          });
+        }
+        wrap.appendChild(panel);
+      }
+    }
+
+    return wrap;
+  }
+
   let state = loadState();
   let root = null;
   let boundContainer = null;
@@ -630,6 +877,10 @@ const CONCURSUS = (() => {
       stage.appendChild(btn);
       stage.appendChild(buildManualEntry());
       root.appendChild(stage);
+      // 2.3 — the weekly review reads history, not today's roll, so it
+      // renders on the ungoverned surface too: an unrolled today is
+      // exactly when last week's pattern is worth seeing.
+      root.appendChild(buildWeeklyReview());
       return;
     }
 
@@ -719,6 +970,11 @@ const CONCURSUS = (() => {
     });
     familyNonneg.appendChild(familyNonnegList);
     root.appendChild(familyNonneg);
+
+    // 2.3 — Weekly Mandate Review, below the day's working surface (the
+    // cards are for doing, the review is for reading) and above nothing:
+    // last on the page, one seven-day visualization in the whole app.
+    root.appendChild(buildWeeklyReview());
   }
 
   // ---------- init (Phase 1 req 4) ----------

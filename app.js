@@ -429,13 +429,18 @@ function renderMandateRing() {
   lastRingDate = s.date;
   lastRingDone = { ...s.domains };
 
+  // 2.1.1 — each segment is a neutral track plus a domain-colored arc in
+  // the locked map (Intake teal / Synthesis charcoal / Exercise coral /
+  // Scripture tan / Family burnt coral). Opacity carries state; the class
+  // list, labels, and aria name still carry it without color.
   const segs = RING_DOMAINS.map(([key], i) =>
-    `<path class="ring-seg${s.domains[key] ? " done" : ""}${justDone.has(key) ? " just-done" : ""}" d="${ringSegPath(i)}"/>`
+    `<path class="ring-track" d="${ringSegPath(i)}"/>` +
+    `<path class="ring-seg dom-${key}${s.domains[key] ? " done" : ""}${justDone.has(key) ? " just-done" : ""}" d="${ringSegPath(i)}"/>`
   ).join("");
 
   const legend = RING_DOMAINS.map(([key, label]) => {
     const done = s.domains[key];
-    return `<span class="ring-label${done ? " done" : ""}">${label} <span class="ring-label-state">${done ? "✓" : "—"}</span></span>`;
+    return `<span class="ring-label${done ? " done" : ""}"><i class="ring-dot dom-${key}${done ? " done" : ""}" aria-hidden="true"></i>${label} <span class="ring-label-state">${done ? "✓" : "—"}</span></span>`;
   }).join("");
 
   // CARPE renders at 5/5 and only at 5/5.

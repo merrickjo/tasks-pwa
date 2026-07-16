@@ -40,7 +40,13 @@
 // mandate-history contract (concursus-history-v1 writes in concursus.js).
 // Changed contents of index.html, app.js, concursus.js, and styles.css —
 // no new files in SHELL, real bump per the standing v12->v13 lesson.
-const CACHE_NAME = "tasks-shell-v17";
+// v17 -> v18: 2.1.1 domain color semantics (locked five-color map replaces
+// the all-coral ring; neutral track + opacity carries state) and 2.3
+// Weekly Mandate Review (seven-day rings + diagnosis in #concursus-view,
+// read from CONCURSUS.history(7)). Changed contents of app.js,
+// concursus.js, and styles.css — no new files in SHELL, real bump per the
+// standing v12->v13 lesson.
+const CACHE_NAME = "tasks-shell-v18";
 const SHELL = [
   "./",
   "./index.html",

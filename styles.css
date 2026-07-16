@@ -718,6 +718,21 @@ body.sheet-open { overflow: hidden; }
   --nk-charcoal: #2C2C2C;
   --nk-teal: #4A6B5C;
   --nk-tan: #C9B89A;
+
+  /* 2.1.1 — locked mandate domain color map. Semantic anchors: Intake =
+     health/nourishment, Synthesis = thought/ink, Exercise = energy,
+     Scripture = parchment, Family = relational warmth. Burnt coral is a
+     documented Coral × Charcoal blend, not a new hue family (Signature
+     Lock). Reuse this exact map in today's ring, the 2.3 seven-day rings,
+     domain totals, and highlighted diagnosis rows — never invent a
+     surface-local variant. If a color collapses against its background,
+     adjust keyline/opacity in that surface's rules, not these hues. */
+  --dm-intake: var(--nk-teal);      /* #4A6B5C */
+  --dm-synthesis: var(--nk-charcoal); /* #2C2C2C */
+  --dm-exercise: var(--nk-coral);   /* #E86441 */
+  --dm-scripture: var(--nk-tan);    /* #C9B89A */
+  --dm-family: #A9533B;             /* burnt coral — Coral × Charcoal blend */
+
   --nk-serif: "Playfair Display", "Lora", serif;
   --nk-slab: "Roboto Slab", "Zilla Slab", serif;
 
@@ -1041,6 +1056,149 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
 }
 
 /* ===================================================================
+   2.3 — Weekly Mandate Review, rendered inside #concursus-view (charcoal
+   surface). Same locked 2.1.1 domain map as today's ring — no
+   surface-local hue variants. Charcoal (Synthesis) and Warm tan
+   (Scripture) get their definition from the light track behind each arc
+   (track stroke wider than the arc = a keyline halo), which is the
+   sanctioned fix: keyline/opacity, never the hue assignment.
+   =================================================================== */
+.wk { margin-top: 28px; }
+.wk-kicker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: rgba(245, 241, 232, 0.55);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 12px;
+}
+.wk-carpe { color: var(--nk-coral); }
+
+.wk-days {
+  display: flex;
+  justify-content: space-between;
+  gap: 2px;
+}
+.wk-day {
+  flex: 1 1 0;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  color: rgba(245, 241, 232, 0.55);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.wk-day svg { width: 100%; max-width: 40px; height: auto; display: block; margin: 0 auto 3px; }
+.wk-day.today { color: var(--nk-cream); }
+.wk-day.selected { background: rgba(245, 241, 232, 0.08); }
+/* Person-highlight (tap a FAMILY person): assigned days hold, others recede. */
+.wk-day.mute-day { opacity: 0.3; }
+
+/* Track = neutral state AND keyline: wider than the arc so every domain
+   color — including charcoal-on-charcoal — reads with a light halo. */
+.wk-track {
+  fill: none;
+  stroke: rgba(245, 241, 232, 0.16);
+  stroke-width: 8;
+}
+.wk-seg {
+  fill: none;
+  stroke-width: 5.5;
+  opacity: 0.28; /* incomplete = domain color, restrained, over the track */
+}
+.wk-seg.done { opacity: 1; }
+/* Domain-highlight (tap a domain total): matching color/position holds
+   across all seven rings, everything else recedes. State (done vs not)
+   stays legible inside the highlight. */
+.wk-seg.mute { opacity: 0.06; }
+
+.wk-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+.wk-total {
+  border: 1px solid rgba(245, 241, 232, 0.2);
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(245, 241, 232, 0.8);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 5px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wk-total[aria-pressed="true"] {
+  border-color: var(--nk-cream);
+  color: var(--nk-cream);
+}
+.wk-total .ring-dot { opacity: 1; }
+/* The 2.1.1 dot map works on charcoal for teal/coral/tan/burnt-coral;
+   Synthesis charcoal gets a keyline box instead of a hue change. */
+.wk-total .ring-dot.dom-synthesis,
+.wk-detail .ring-dot.dom-synthesis {
+  box-shadow: 0 0 0 1px rgba(245, 241, 232, 0.45);
+}
+
+.wk-family {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.wk-family-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  color: rgba(245, 241, 232, 0.55);
+}
+
+.wk-diagnosis {
+  font-family: var(--nk-slab);
+  font-size: 13px;
+  font-weight: 300;
+  line-height: 1.6;
+  color: rgba(245, 241, 232, 0.85);
+  margin: 14px 0 0;
+}
+
+.wk-detail {
+  border: 1px solid rgba(245, 241, 232, 0.2);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-top: 12px;
+}
+.wk-detail-head {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(245, 241, 232, 0.55);
+  margin-bottom: 8px;
+}
+.wk-detail-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 3px 0;
+  color: rgba(245, 241, 232, 0.8);
+}
+.wk-detail-row .wk-detail-state { margin-left: auto; }
+.wk-detail-row.done { color: var(--nk-cream); }
+
+/* ===================================================================
    Phase 3 — Roll-to-Tasks projection, rendered inside the Tasks (cream)
    surface. Uses the Signature Lock coral token as the one accent, same
    restraint rule as everywhere else: outline/text accent, never a filled
@@ -1069,20 +1227,56 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
   width: 56px;
   height: 56px;
 }
-.ring-seg {
+/* 2.1.1 — domain color semantics. Two arcs per segment: a neutral track
+   underneath (always), and a domain-colored arc on top whose OPACITY
+   carries state — completed = full domain color, incomplete = the same
+   domain color at restrained opacity over the track. State never rides on
+   a hue swap, so grayscale keeps the done/undone distinction and the
+   labels/glyphs still carry state without any color at all. */
+.ring-track {
   fill: none;
   stroke: var(--border);
   stroke-width: 7;
 }
-.ring-seg.done { stroke: var(--nk-coral); }
+.ring-seg {
+  fill: none;
+  stroke-width: 7;
+  opacity: 0.28;
+}
+.ring-seg.done { opacity: 1; }
+.dom-intake { stroke: var(--dm-intake); }
+.dom-synthesis { stroke: var(--dm-synthesis); }
+.dom-exercise { stroke: var(--dm-exercise); }
+.dom-scripture { stroke: var(--dm-scripture); }
+.dom-family { stroke: var(--dm-family); }
 /* One-shot fill-in on a confirmed completion write (class applied by
    renderMandateRing only on the false→true render). Opacity only — no
    layout properties, no bounce, quiet easing, inside the 160–220ms band. */
 .ring-seg.just-done { animation: ring-fill 200ms ease-out; }
 @keyframes ring-fill {
-  from { opacity: 0.25; }
+  from { opacity: 0.28; }
   to { opacity: 1; }
 }
+
+/* 2.1.1 — legend dots: the same domain map on the labels, same opacity
+   state rule as the segments. Color accelerates recognition; the ✓/—
+   glyph and the container's accessible name still carry state alone. */
+.ring-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  margin-right: 4px;
+  vertical-align: baseline;
+  background: currentColor;
+  opacity: 0.28;
+}
+.ring-dot.done { opacity: 1; }
+.ring-dot.dom-intake { background: var(--dm-intake); }
+.ring-dot.dom-synthesis { background: var(--dm-synthesis); }
+.ring-dot.dom-exercise { background: var(--dm-exercise); }
+.ring-dot.dom-scripture { background: var(--dm-scripture); }
+.ring-dot.dom-family { background: var(--dm-family); }
 
 .ring-count {
   font-family: var(--font-mono);
@@ -1122,7 +1316,13 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
   background: var(--nk-coral);
   border-color: var(--nk-coral);
 }
+/* CARPE only exists at 5/5 — every segment is done, so no diagnosis is
+   being read off this state; the full-cream inversion (over the domain
+   map) is deliberate and keeps Exercise's coral from vanishing into the
+   coral fill. */
 .mandate-ring.carpe .ring-seg.done { stroke: var(--nk-cream); }
+.mandate-ring.carpe .ring-track { stroke: rgba(245, 241, 232, 0.35); }
+.mandate-ring.carpe .ring-dot { background: var(--nk-cream); }
 .mandate-ring.carpe .ring-count { fill: var(--nk-cream); }
 .mandate-ring.carpe .ring-label,
 .mandate-ring.carpe .ring-label.done,
