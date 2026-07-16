@@ -267,7 +267,7 @@ function renderDueChips() {
     if (placeholder) placeholder.classList.toggle("hidden", !!customInput.value);
   }
 }
-document.querySelectorAll(".due-chip[data-due]").forEach((btn) => {
+document.querySelectorAll("#new-due-chips .due-chip[data-due]").forEach((btn) => {
   btn.addEventListener("click", () => {
     const kind = btn.dataset.due;
     quickAddDue = kind === "today" ? todayISO() : kind === "tomorrow" ? tomorrowISO() : "";
@@ -427,8 +427,15 @@ function renderConcursusRow(task) {
     // surface too, but re-render directly here as well so a same-tab tap
     // doesn't depend on that ordering to feel immediate.
     CONCURSUS.toggleDomain(task.domain);
-    const all = sortTasks(getCache());
-    render(all);
+    // AB-03: on a first-ever offline launch there's no cache metadata yet and
+    // #list is showing the "Can't reach the server" state (see boot()). A
+    // full render(all) here would silently replace that with an empty
+    // "No open tasks" list. Preserve the connection-error state instead —
+    // same gating boot() already applies.
+    if (hasCacheMetadata()) {
+      const all = sortTasks(getCache());
+      render(all);
+    }
   });
 
   const body = document.createElement("div");
@@ -1061,20 +1068,50 @@ async function boot() {
 // cold start. Re-resolve the clock-driven view on resume so Thursday-evening
 // opens land on Sunday Prep even when the page never actually reloaded.
 // Manual picks are left alone (session override holds).
+// AB-02: this handler used to re-render only when the auto-resolved view
+// changed (and never while a manual view pick was held). CONCURSUS rolls
+// over at local midnight independent of the Tasks view, so a resident PWA
+// left open past midnight on a held/unchanged view kept showing yesterday's
+// CONCURSUS · TODAY rows with dead checkboxes until a tab or view switch
+// forced a re-render. Track the date last rendered and compare it against
+// CONCURSUS.status().date on every resume; on mismatch, force a full
+// re-render regardless of view-change or manual-pick state.
+let lastRenderedConcursusDate = null;
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState !== "visible" || viewManual) return;
+  if (document.visibilityState !== "visible") return;
   const all = sortTasks(getCache());
+
+  const concursusDateStale =
+    typeof CONCURSUS !== "undefined" &&
+    CONCURSUS.status().date !== lastRenderedConcursusDate;
+
+  if (viewManual && !concursusDateStale) return;
+
   const before = activeView;
-  applyAutoView(all);
-  if (activeView !== before) {
-    syncQuickAddArea();
-    syncQuickAddDue();
+  if (!viewManual) applyAutoView(all);
+  const viewChanged = activeView !== before;
+
+  if (viewChanged || concursusDateStale) {
+    if (viewChanged) {
+      syncQuickAddArea();
+      syncQuickAddDue();
+    }
     const prev = captureRects();
     renderChips(all);
     render(all);
     playFlip(prev);
   }
 });
+
+// Keep the tracked date in sync with every render path that touches the
+// CONCURSUS strip/group, not just this handler's own re-renders.
+const _origRenderConcursusStrip = renderConcursusStrip;
+renderConcursusStrip = function () {
+  _origRenderConcursusStrip();
+  if (typeof CONCURSUS !== "undefined") {
+    lastRenderedConcursusDate = CONCURSUS.status().date;
+  }
+};
 
 // --- tab router (Phase 1 req 5/6) ---
 // app.js owns setActiveTab for both "tasks" and "concursus"; index.html
@@ -1108,9 +1145,12 @@ function setActiveTab(tab) {
     // "Returning to Tasks triggers one Tasks render" (Phase 1 req 5) —
     // reuse the same cache-driven re-render the visibilitychange handler
     // already uses, not a network refetch.
+    // AB-03: gate the same way boot() does — no cache metadata means #list
+    // is showing the connection-error state, and this render(all) call must
+    // not replace it with a false "No open tasks".
     const all = sortTasks(getCache());
     renderChips(all);
-    render(all);
+    if (hasCacheMetadata()) render(all);
   }
 }
 
@@ -1129,6 +1169,9 @@ function initTabRouter() {
   // second initTabRouter() call never double-subscribes.
   if (!concursusSubscribed) {
     CONCURSUS.subscribe(() => {
+      // AB-03: same gating as boot() — don't clobber the connection-error
+      // state with an empty-list render when there's no cache metadata yet.
+      if (!hasCacheMetadata()) return;
       const all = sortTasks(getCache());
       render(all);
     });

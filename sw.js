@@ -20,7 +20,15 @@
 // regardless of how many times the installed PWA icon is killed and
 // reopened. Reinstalling the home-screen icon does not clear Cache
 // Storage; only an actual sw.js byte change (this bump) does.
-const CACHE_NAME = "tasks-shell-v14";
+// v14 -> v15: AB-01 (quick-add due-chip click handler was document-scoped
+// and leaked into the edit sheet's due chips), AB-02 (stale CONCURSUS ·
+// TODAY rows survived local midnight on a held Tasks view), and AB-03
+// (post-boot render(getCache()) calls in setActiveTab, the CONCURSUS
+// subscribe callback, and the projected-row check handler could clobber
+// the offline connection-error state with a false "No open tasks") all
+// changed app.js contents only -- bump needed or the fixes never reach an
+// already-installed PWA.
+const CACHE_NAME = "tasks-shell-v15";
 const SHELL = [
   "./",
   "./index.html",
