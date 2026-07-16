@@ -46,7 +46,12 @@
 // read from CONCURSUS.history(7)). Changed contents of app.js,
 // concursus.js, and styles.css — no new files in SHELL, real bump per the
 // standing v12->v13 lesson.
-const CACHE_NAME = "tasks-shell-v18";
+// v18 -> v19: 2.3 layout revision — Weekly Mandate Review moves from the
+// bottom of #concursus-view to directly below the roll line, above the
+// domain cards; domain totals + FAMILY coverage fold into a collapsed
+// TOTALS disclosure (inferable from the rings — drill-down, not layout).
+// Changed contents of concursus.js and styles.css.
+const CACHE_NAME = "tasks-shell-v19";
 const SHELL = [
   "./",
   "./index.html",

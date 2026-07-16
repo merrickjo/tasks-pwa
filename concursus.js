@@ -433,6 +433,11 @@ const CONCURSUS = (() => {
   let wkSelectedDate = null;
   let wkHlDomain = null;
   let wkHlPerson = null;
+  // Totals disclosure (revised 16 Jul: the x/7 chips are drill-down, not
+  // layout — the rings and the diagnosis sentence carry the signal).
+  // Session-scoped like the other lenses; must survive re-renders so
+  // tapping a total inside it doesn't snap it shut.
+  let wkTotalsOpen = false;
 
   // "2026-07-16" -> local Date. Never new Date("YYYY-MM-DD") — that parses
   // as UTC and shifts the weekday in Jakarta (same bug class as todayISO).
@@ -560,6 +565,15 @@ const CONCURSUS = (() => {
     });
     wrap.appendChild(row);
 
+    // Domain totals + FAMILY coverage live inside a collapsed disclosure —
+    // inferable from the rings at a glance, so they don't take layout by
+    // default. Expanding is also how the highlight lenses are reached.
+    const more = el("details", "wk-more");
+    more.open = wkTotalsOpen;
+    more.addEventListener("toggle", () => { wkTotalsOpen = more.open; });
+    const moreSummary = el("summary", "wk-more-summary", "TOTALS");
+    more.appendChild(moreSummary);
+
     // Domain totals — x/7, tappable to highlight that domain's color and
     // position across all seven rings.
     const totals = el("div", "wk-totals");
@@ -581,7 +595,7 @@ const CONCURSUS = (() => {
       });
       totals.appendChild(btn);
     });
-    wrap.appendChild(totals);
+    more.appendChild(totals);
 
     // FAMILY coverage — assigned vs completed, because the roll (not the
     // user) controls opportunity. Tappable to highlight assigned days.
@@ -605,7 +619,8 @@ const CONCURSUS = (() => {
       });
       famRow.appendChild(btn);
     });
-    wrap.appendChild(famRow);
+    more.appendChild(famRow);
+    wrap.appendChild(more);
 
     // The diagnosis — derived only from snapshots, readable as plain text.
     wrap.appendChild(el("p", "wk-diagnosis", wkDiagnosis(stats)));
@@ -912,6 +927,11 @@ const CONCURSUS = (() => {
 
     if (s.carpe) root.appendChild(el("div", "cc-carpe", "⚡ CARPE POINT EARNED"));
 
+    // 2.3 — Weekly Mandate Review, directly below the roll line (placement
+    // revised 16 Jul: read the week's pattern first, then work today's
+    // cards). Still the one seven-day visualization in the whole app.
+    root.appendChild(buildWeeklyReview());
+
     DOMAINS.forEach(([key, label]) => {
       const card = el("div", "cc-card" + (state.done[key] ? " done" : ""));
       card.setAttribute("role", "button");
@@ -970,11 +990,6 @@ const CONCURSUS = (() => {
     });
     familyNonneg.appendChild(familyNonnegList);
     root.appendChild(familyNonneg);
-
-    // 2.3 — Weekly Mandate Review, below the day's working surface (the
-    // cards are for doing, the review is for reading) and above nothing:
-    // last on the page, one seven-day visualization in the whole app.
-    root.appendChild(buildWeeklyReview());
   }
 
   // ---------- init (Phase 1 req 4) ----------

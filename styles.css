@@ -1063,7 +1063,10 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
    (track stroke wider than the arc = a keyline halo), which is the
    sanctioned fix: keyline/opacity, never the hue assignment.
    =================================================================== */
-.wk { margin-top: 28px; }
+/* Placement (revised 16 Jul): directly below the roll line on governed
+   days, above the domain cards — read the pattern, then do the work.
+   On the ungoverned surface it still follows the roll stage. */
+.wk { margin: 6px 0 26px; }
 .wk-kicker {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -1119,11 +1122,26 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
    stays legible inside the highlight. */
 .wk-seg.mute { opacity: 0.06; }
 
+/* Totals disclosure — collapsed by default; the rings + diagnosis carry
+   the signal, the x/7 chips (and highlight lenses) are drill-down. */
+.wk-more { margin-top: 10px; }
+.wk-more-summary {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  color: rgba(245, 241, 232, 0.45);
+  cursor: pointer;
+  list-style: none;
+}
+.wk-more-summary::-webkit-details-marker { display: none; }
+.wk-more-summary::before { content: "▸ "; }
+.wk-more[open] .wk-more-summary::before { content: "▾ "; }
+
 .wk-totals {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 12px;
+  margin-top: 10px;
 }
 .wk-total {
   border: 1px solid rgba(245, 241, 232, 0.2);
