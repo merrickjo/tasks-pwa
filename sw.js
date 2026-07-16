@@ -54,7 +54,12 @@
 // v19 -> v20: 2.5 relative due-date labels. Raw YYYY-MM-DD tags are now
 // decision-useful local-date labels, with Today-header suppression and
 // overdue escalation styling. Changed app.js and styles.css.
-const CACHE_NAME = "tasks-shell-v20";
+// v20 -> v21: 3.1 token consolidation (Narrowkind palette, three-layer
+// tokens, charcoal mode with manual override via the contracted
+// localStorage key tasks-theme-v1) + 3.2 motion tokens and inventory
+// (coral check-fill, FLIP completion reflow, token-driven durations).
+// Changed index.html, styles.css, app.js, manifest.json.
+const CACHE_NAME = "tasks-shell-v21";
 const SHELL = [
   "./",
   "./index.html",

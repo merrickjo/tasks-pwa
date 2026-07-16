@@ -16,6 +16,63 @@ function getConfig() {
 }
 function setConfig(cfg) { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); }
 
+// --- 3.1: background-mode resolution (cream / charcoal) ---
+// System preference is the default; a manual tap on the topbar control
+// pins a mode. THEME_KEY is a contracted localStorage-key addition,
+// declared in the same commit that introduces it (the 2.6 rule bans
+// *silent* key additions, not additions).
+const THEME_KEY = "tasks-theme-v1";
+function savedTheme() {
+  try {
+    const v = localStorage.getItem(THEME_KEY);
+    return v === "dark" || v === "light" ? v : null;
+  } catch { return null; }
+}
+function systemTheme() {
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark" : "light";
+}
+function applyTheme() {
+  const saved = savedTheme();
+  if (saved) document.documentElement.dataset.theme = saved;
+  else delete document.documentElement.dataset.theme;
+  const eff = saved || systemTheme();
+  // Keep the iOS status bar on the active surface. These two hexes mirror
+  // the token block (--nk-cream / --nk-charcoal) — markup can't read CSS
+  // variables, so they're pinned here by reference.
+  const modeColor = eff === "dark" ? "#2C2C2C" : "#F5F1E8";
+  ["meta-theme-light", "meta-theme-dark"].forEach((id) => {
+    const m = document.getElementById(id);
+    if (m) m.setAttribute("content", saved ? modeColor : (id === "meta-theme-dark" ? "#2C2C2C" : "#F5F1E8"));
+  });
+  const btn = document.getElementById("mode-toggle");
+  if (btn) btn.textContent = eff === "dark" ? "charcoal" : "cream";
+}
+document.getElementById("mode-toggle").addEventListener("click", () => {
+  const next = (savedTheme() || systemTheme()) === "dark" ? "light" : "dark";
+  try { localStorage.setItem(THEME_KEY, next); } catch {}
+  applyTheme();
+});
+if (window.matchMedia) {
+  const mq = window.matchMedia("(prefers-color-scheme: dark)");
+  if (mq.addEventListener) mq.addEventListener("change", applyTheme);
+}
+applyTheme();
+
+// --- 3.2: motion tokens — JS reads the same tokens CSS declares, so no
+// literal duration or curve exists in component code, and reduced motion
+// (which zeroes the tokens at the CSS layer) collapses every JS-driven
+// animation to an instant state change through the same single mechanism.
+function motionMs(token) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+  const n = parseFloat(v);
+  if (!isFinite(n)) return 0;
+  return v.endsWith("ms") ? n : n * 1000;
+}
+function motionEase() {
+  return getComputedStyle(document.documentElement).getPropertyValue("--ease-standard").trim() || "ease";
+}
+
 function api(path) {
   const cfg = getConfig();
   return cfg.url.replace(/\/$/, "") + path;
@@ -347,13 +404,19 @@ function captureRects() {
 }
 function playFlip(prev) {
   if (!prev || !("animate" in Element.prototype)) return;
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  // Reduced motion zeroes the tokens (3.2): instant state change, no
+  // partial concessions — same gate the CSS layer uses.
+  if (motionMs("--dur-base") === 0) return;
+  const ease = motionEase();
   document.querySelectorAll("#list .row").forEach((r) => {
     const old = prev.get(r.dataset.id);
     if (!old) {
+      // Entering row (incl. task add, which only re-renders after the
+      // Worker confirms — 1.6's confirm-then-render holds, so nothing
+      // animates on optimism): fade + 8px translate-up, --dur-base.
       r.animate(
-        [{ opacity: 0, transform: "translateY(6px)" }, { opacity: 1, transform: "none" }],
-        { duration: 180, easing: "ease-out" }
+        [{ opacity: 0, transform: "translateY(8px)" }, { opacity: 1, transform: "none" }],
+        { duration: motionMs("--dur-base"), easing: ease }
       );
       return;
     }
@@ -361,9 +424,10 @@ function playFlip(prev) {
     const dx = old.left - now.left;
     const dy = old.top - now.top;
     if (dx || dy) {
+      // Moved row: transform-only glide inside the ≤250ms budget.
       r.animate(
         [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }],
-        { duration: 220, easing: "cubic-bezier(0.2, 0, 0, 1)" }
+        { duration: motionMs("--dur-max"), easing: ease }
       );
     }
   });
@@ -543,7 +607,7 @@ function renderConcursusRow(task) {
   check.className = "check" + (task.completed ? " checked" : "");
   check.setAttribute("aria-label",
     (task.completed ? "Mark incomplete: " : "Mark done: ") + task.title);
-  check.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="4,13 9,18 20,6"/></svg>`;
+  check.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="4,13 9,18 20,6"/></svg>`;
   check.addEventListener("click", (e) => {
     e.stopPropagation();
     // req 6 -- the only mutation path, shared with the CONCURSUS tab. Its
@@ -683,7 +747,7 @@ function renderRow(task, opts = {}) {
   const check = document.createElement("button");
   check.className = "check";
   check.setAttribute("aria-label", "Mark done");
-  check.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="4,13 9,18 20,6"/></svg>`;
+  check.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="4,13 9,18 20,6"/></svg>`;
   // 1.6: checkbox stays completion-only — stopPropagation so a tap here
   // never bubbles to the row body's click-to-edit listener below.
   check.addEventListener("click", (e) => {
@@ -758,13 +822,17 @@ async function completeTask(task, rowEl, checkEl) {
     // counts, date sections, and empty state all went stale (worst case:
     // completing the last task in a view left its section header floating
     // over nothing).
+    // 3.2: wait out the check-fill + row fade (token-driven), then FLIP
+    // the reflow — remaining rows glide into place instead of jumping.
     setTimeout(() => {
       const cached = getCache().filter((t) => t.id !== task.id);
       setCache(cached);
       const all = sortTasks(cached);
       renderChips(all);
+      const prev = captureRects();
       render(all);
-    }, 260);
+      playFlip(prev);
+    }, motionMs("--dur-max") + 10);
   } catch (e) {
     checkEl.classList.remove("checking");
     rowEl.classList.remove("done");
@@ -1076,8 +1144,8 @@ function showToast(msg) {
   requestAnimationFrame(() => el.classList.add("show"));
   setTimeout(() => {
     el.classList.remove("show");
-    setTimeout(() => el.remove(), 200);
-  }, 2200);
+    setTimeout(() => el.remove(), motionMs("--dur-base")); // fade-out rides the token
+  }, 2200); // hold time — display duration, not motion; stays literal
 }
 
 // Confirm-then-render: nothing changes in the cache, the list, or the sheet

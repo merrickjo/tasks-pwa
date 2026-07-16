@@ -1,14 +1,157 @@
+/* ===================================================================
+   3.1 — TOKEN BLOCK (the only place raw hex may appear in this file)
+
+   Three layers, per the backlog's locked architecture:
+     1. primitives  — the five locked Narrowkind hues + burnt coral +
+                      semantic red, plus computed derived hexes (each
+                      derivation documented inline; derived values are
+                      hex, not adjectives).
+     2. semantic roles — --bg / --ink / --border / --accent / --overdue /
+                      five --area-* accents (+ the roles this app already
+                      shipped with: surface, ink-soft, amber, green).
+                      Components reference roles, never primitives.
+     3. mode resolution — every role carries an explicit value per
+                      background mode: cream (default, below) and
+                      charcoal (the two blocks at the end of this
+                      section). Never mix surfaces from both modes.
+
+   Contrast gate (run 16 Jul 2026, WCAG relative luminance):
+     · every text role ≥ 4.5:1 against both --bg and --surface in its
+       mode (derived tints below were solved numerically for exactly
+       that bound — that is why e.g. church is #7A649C, not #7B5EA7);
+     · coral is a locked hue and stays #E86441 in both modes. It misses
+       4.5:1 for small text (2.94 on cream, 4.21 on charcoal), so per
+       the locked ruling every coral *text* use carries font-weight 700
+       — weight adjusts, hue never moves. As a UI-component color on
+       charcoal it passes (4.21 ≥ 3:1); on cream the add button's 40px
+       fill + cream glyph is the accepted Signature Lock exception.
+     · --border is a hairline divider by the spec's own table value
+       (#EAE3D4 ≈ 1.1:1 on cream) — dividers are not state-bearing and
+       are exempt from the 3:1 UI-glyph bound; state-bearing 1px rules
+       (active chip, focus) ride --accent instead.
+   =================================================================== */
 :root {
-  --bg: #FAFAF8;
+  /* -- layer 1 · primitives (Signature Lock; these never move) -- */
+  --nk-cream: #F5F1E8;
+  --nk-coral: #E86441;
+  --nk-charcoal: #2C2C2C;
+  --nk-teal: #4A6B5C;
+  --nk-tan: #C9B89A;
+  --nk-burnt-coral: #A9533B; /* documented Coral × Charcoal blend (2.1.1) */
+  --nk-red: #B23A2E;         /* semantic red — deliberately NOT coral */
+
+  /* primitives, derived (all computed against the contrast gate):
+     cream-mode set */
+  --nk-border-cream: #EAE3D4;   /* 25% tan over cream (spec table) */
+  --nk-subtle-cream: #F0EADE;   /* 12.5% tan over cream — banner tint */
+  --nk-church: #7A649C;         /* #7B5EA7 −25% sat, L solved to 4.51:1 on cream */
+  --nk-blibli: #476E98;         /* #3A6EA5 −25% sat, L solved to 4.71:1 on cream */
+  --nk-family: #99612E;         /* #C07A3A tint darkened to 4.54:1 on cream */
+  --nk-amber: #8E672D;          /* #B8863A tint darkened to 4.51:1 on cream */
+  --nk-soft: #6B6B66;           /* muted ink (4.75:1 on cream) */
+  /* charcoal-mode set — each L solved to ≥4.5:1 on #34332F (surface,
+     the stricter bound; bg #2C2C2C passes a fortiori) */
+  --nk-surface-charcoal: #34332F;
+  --nk-border-charcoal: #5B564D; /* 30% tan over charcoal — the 2.3
+                                    track-as-keyline solution, reused */
+  --nk-subtle-charcoal: #3A3833;
+  --nk-soft-charcoal: #A5A29D;   /* 60% cream over charcoal */
+  --nk-overdue-charcoal: #DC8278;
+  --nk-amber-charcoal: #C49143;
+  --nk-teal-charcoal: #7AA391;
+  --nk-church-charcoal: #A394BA;
+  --nk-blibli-charcoal: #7C9EC1;
+  --nk-family-charcoal: #CB8D53;
+  --nk-personal-charcoal: #9B9B96;
+
+  /* -- layer 2 · semantic roles, resolved for CREAM mode (default) -- */
+  --bg: var(--nk-cream);
   --surface: #FFFFFF;
-  --ink: #1A1A1A;
-  --ink-soft: #6B6B66;
-  --border: #E3E1DB;
-  --red: #B23A2E;
-  --amber: #B8863A;
-  --green: #4C7A5A;
+  --ink: var(--nk-charcoal);
+  --ink-soft: var(--nk-soft);
+  --border: var(--nk-border-cream);
+  --bg-subtle: var(--nk-subtle-cream);
+  --accent: var(--nk-coral);
+  --on-accent: var(--nk-cream); /* glyphs sitting on a coral fill */
+  --overdue: var(--nk-red);
+  --amber: var(--nk-amber);
+  --green: var(--nk-teal);
+  --scrim: rgba(0, 0, 0, 0.4);
+  --area-church: var(--nk-church);
+  --area-blibli: var(--nk-blibli);
+  --area-fitness: var(--nk-teal);
+  --area-family: var(--nk-family);
+  --area-personal: var(--nk-soft);
+
+  /* -- 3.2 · motion tokens (the only place durations/curves live) -- */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --dur-fast: 150ms;
+  --dur-base: 200ms;
+  --dur-max: 250ms;
+  --dur-fill: 160ms; /* completion check-fill — the one brand moment */
+
+  /* -- spacing scale (locked): 4px base — snap, never invent -- */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+
   --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+}
+
+/* -- layer 3 · mode resolution: CHARCOAL. Two entry points, one value
+   set: system preference (unless manually overridden to light) and the
+   manual override (tasks-theme-v1 → <html data-theme>). Keep these two
+   blocks textually identical. -- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: var(--nk-charcoal);
+    --surface: var(--nk-surface-charcoal);
+    --ink: var(--nk-cream);
+    --ink-soft: var(--nk-soft-charcoal);
+    --border: var(--nk-border-charcoal);
+    --bg-subtle: var(--nk-subtle-charcoal);
+    --overdue: var(--nk-overdue-charcoal);
+    --amber: var(--nk-amber-charcoal);
+    --green: var(--nk-teal-charcoal);
+    --scrim: rgba(0, 0, 0, 0.55);
+    --area-church: var(--nk-church-charcoal);
+    --area-blibli: var(--nk-blibli-charcoal);
+    --area-fitness: var(--nk-teal-charcoal);
+    --area-family: var(--nk-family-charcoal);
+    --area-personal: var(--nk-personal-charcoal);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: var(--nk-charcoal);
+  --surface: var(--nk-surface-charcoal);
+  --ink: var(--nk-cream);
+  --ink-soft: var(--nk-soft-charcoal);
+  --border: var(--nk-border-charcoal);
+  --bg-subtle: var(--nk-subtle-charcoal);
+  --overdue: var(--nk-overdue-charcoal);
+  --amber: var(--nk-amber-charcoal);
+  --green: var(--nk-teal-charcoal);
+  --scrim: rgba(0, 0, 0, 0.55);
+  --area-church: var(--nk-church-charcoal);
+  --area-blibli: var(--nk-blibli-charcoal);
+  --area-fitness: var(--nk-teal-charcoal);
+  --area-family: var(--nk-family-charcoal);
+  --area-personal: var(--nk-personal-charcoal);
+}
+
+/* Reduced motion resolves at the token layer: every inventory entry
+   becomes an instant state change. No partial concessions. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-max: 0ms;
+    --dur-fill: 0ms;
+  }
 }
 
 * { box-sizing: border-box; }
@@ -38,12 +181,12 @@ body {
   z-index: 5;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
-  padding: 18px 20px 12px;
+  padding: 16px 24px 12px;
 }
 
 .topbar .date {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-soft);
@@ -51,7 +194,8 @@ body {
 
 .topbar h1 {
   margin: 2px 0 0;
-  font-size: 22px;
+  font-family: var(--nk-slab); /* brand moment: view title in slab */
+  font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
@@ -59,8 +203,8 @@ body {
 /* --- area filter chips --- */
 .chips {
   display: flex;
-  gap: 6px;
-  margin-top: 10px;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
@@ -73,35 +217,40 @@ body {
   font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 0.02em;
-  padding: 5px 11px;
+  padding: var(--s-1) var(--s-3);
   border: 1px solid var(--border);
   border-radius: 999px;
   background: transparent;
   color: var(--ink-soft);
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition: background-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard);
 }
+/* 3.1 coral restraint: active chip = coral 1px rule + coral text, never a
+   fill. Bold per the contrast-gate weight ruling for coral small text. */
 .chip.active {
-  background: var(--ink);
-  color: var(--bg);
-  border-color: var(--ink);
+  background: transparent;
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 700;
 }
 
 .chip .badge {
   display: inline-block;
-  margin-left: 6px;
+  margin-left: var(--s-2);
   min-width: 16px;
   padding: 0 4px;
   border-radius: 999px;
   background: var(--border);
   color: var(--ink);
-  font-size: 10.5px;
+  font-size: 12px;
   line-height: 16px;
   text-align: center;
 }
 .chip.active .badge {
-  background: rgba(255, 255, 255, 0.22);
-  color: var(--bg);
+  /* outline chip keeps the neutral badge — count is data, not accent */
+  background: var(--border);
+  color: var(--ink);
+  font-weight: 400;
 }
 
 /* --- Area group headers (All view, backlog 1.3 / former 1.2) --- */
@@ -110,12 +259,12 @@ body {
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 16px 20px 6px;
+  padding: var(--s-4) var(--s-5) var(--s-2);
   border: none;
   background: transparent;
   color: var(--ink);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
@@ -134,7 +283,7 @@ body {
 
 .area-head .area-count {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 12px;
   min-width: 18px;
   padding: 1px 5px;
   border-radius: 999px;
@@ -152,18 +301,18 @@ body {
   height: 12px;
   margin-left: auto;
   color: var(--ink-soft);
-  transition: transform 0.18s ease;
+  transition: transform var(--dur-fast) var(--ease-standard);
 }
 .area-head.collapsed .area-chev { transform: rotate(-90deg); }
 
 .group-body.collapsed { display: none; }
 
-/* per-Area accents */
-.a-church { --area-c: #7B5EA7; }
-.a-blibli { --area-c: #3A6EA5; }
-.a-fitness { --area-c: #4C7A5A; }
-.a-family { --area-c: #C07A3A; }
-.a-personal { --area-c: #6B6B66; }
+/* per-Area accents — data colors, resolved per mode in the token block */
+.a-church { --area-c: var(--area-church); }
+.a-blibli { --area-c: var(--area-blibli); }
+.a-fitness { --area-c: var(--area-fitness); }
+.a-family { --area-c: var(--area-family); }
+.a-personal { --area-c: var(--area-personal); }
 
 .tag.area {
   color: var(--area-c, var(--ink-soft));
@@ -176,11 +325,28 @@ body {
   font-weight: 400;
 }
 
+/* 3.1 — background-mode override control. Text-only, mono, no chrome:
+   a data tag, not a feature. Sits on the date line, right-aligned. */
+.mode-toggle {
+  position: absolute;
+  top: var(--s-4);
+  right: var(--s-5);
+  border: none;
+  background: transparent;
+  padding: 2px 0 2px var(--s-2); /* generous tap slop on the open side */
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
 .banner {
   font-family: var(--font-mono);
   font-size: 12px;
-  padding: 8px 20px;
-  background: #F1EFE8;
+  padding: var(--s-2) var(--s-5);
+  background: var(--bg-subtle);
   color: var(--ink-soft);
   border-bottom: 1px solid var(--border);
   display: none;
@@ -198,21 +364,21 @@ main {
 
 .section-label {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-soft);
-  padding: 16px 20px 6px;
+  padding: var(--s-4) var(--s-5) var(--s-2);
 }
 
 .row {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 12px 20px;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-5);
   border-bottom: 1px solid var(--border);
   background: var(--surface);
-  transition: opacity 0.25s ease, transform 0.25s ease;
+  transition: opacity var(--dur-max) var(--ease-standard), transform var(--dur-max) var(--ease-standard);
 }
 
 .row.done {
@@ -241,7 +407,13 @@ main {
   opacity: 0;
 }
 
-.check.checking { background: var(--ink); }
+/* 3.2 completion — the one celebratory brand moment: the fill turns
+   coral (--dur-fill), the glyph rides --on-accent. */
+.check {
+  color: var(--on-accent);
+  transition: background-color var(--dur-fill) var(--ease-standard), border-color var(--dur-fill) var(--ease-standard);
+}
+.check.checking { background: var(--accent); border-color: var(--accent); }
 .check.checking svg { opacity: 1; }
 
 .row-body { flex: 1; min-width: 0; }
@@ -262,24 +434,26 @@ main {
 
 .tag {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 12px;
   letter-spacing: 0.02em;
-  padding: 2px 6px;
+  padding: 2px var(--s-2);
   border: 1px solid var(--border);
   border-radius: 3px;
   color: var(--ink-soft);
 }
 
-.tag.p1 { color: var(--red); border-color: var(--red); }
+.tag.p1 { color: var(--overdue); border-color: var(--overdue); }
 .tag.p2 { color: var(--amber); border-color: var(--amber); }
-.tag.due-overdue { color: var(--red); border-color: var(--red); }
+.tag.due-overdue { color: var(--overdue); border-color: var(--overdue); }
 .tag.due-escalated { font-weight: 700; }
 
+/* Empty-state voice lines are a brand moment: slab, body size. */
 .empty {
-  padding: 60px 20px;
+  padding: 64px var(--s-5); /* 64 = 2 × --s-6 */
   text-align: center;
   color: var(--ink-soft);
-  font-size: 14px;
+  font-family: var(--nk-slab);
+  font-size: 15px;
 }
 
 /* --- quick capture --- */
@@ -291,7 +465,7 @@ main {
   z-index: 10;
   background: var(--surface);
   border-top: 1px solid var(--border);
-  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  padding: var(--s-3) var(--s-3) calc(var(--s-3) + env(safe-area-inset-bottom));
 }
 
 /* backlog 1.5: due-date quick-add. Compact chips, not a date picker as the
@@ -303,8 +477,8 @@ main {
    field-tested and doesn't have this problem. */
 .capture-due {
   display: flex;
-  gap: 6px;
-  margin-bottom: 8px;
+  gap: var(--s-2);
+  margin-bottom: var(--s-2);
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
@@ -329,19 +503,20 @@ main {
   font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 0.02em;
-  padding: 6px 10px;
+  padding: var(--s-2) var(--s-3);
   border: 1px solid var(--border);
   border-radius: 8px;
   background: transparent;
   color: var(--ink-soft);
   line-height: 1.2;
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition: background-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard);
 }
 .due-chip.active {
-  background: var(--ink);
-  color: var(--bg);
-  border-color: var(--ink);
+  background: transparent;
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 700;
 }
 /* FIX v4 (post-ship, 15 Jul): both the off-screen input (v3a) and the
    invisible-overlay-on-a-label input (v3b) failed on iOS WebKit/Brave —
@@ -384,11 +559,12 @@ main {
   appearance: auto;
 }
 .capture-due .due-date-native:focus {
-  border-color: var(--ink);
+  border-color: var(--accent); /* focus = coral outline */
 }
 .due-date-native.active {
-  border-color: var(--ink);
-  color: var(--ink);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 700;
 }
 
 .due-date-placeholder {
@@ -415,20 +591,20 @@ main {
   min-width: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 11px 12px;
+  padding: var(--s-3) var(--s-3);
   font-size: 15px;
   font-family: var(--font-sans);
   background: var(--bg);
   color: var(--ink);
 }
-.capture input[type="text"]:focus { outline: none; border-color: var(--ink); }
+.capture input[type="text"]:focus { outline: none; border-color: var(--accent); }
 
 .capture select {
   flex: none;
   max-width: 84px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 11px 6px;
+  padding: var(--s-3) var(--s-2);
   font-family: var(--font-mono);
   font-size: 12px;
   background: var(--bg);
@@ -443,14 +619,16 @@ main {
 /* FIX v2 (15 Jul): was `.capture button` — matched every <button> in
    .capture, including the due chips, and its higher specificity silently
    overrode their sizing. Scoped to the add button only. */
+/* 3.1 coral restraint: the add button is the ONE solid coral surface
+   per screen. Coral is invitation, not alarm. */
 .capture #new-add {
   flex: none;
   width: 40px;
   height: 40px;
   border-radius: 8px;
   border: none;
-  background: var(--ink);
-  color: var(--bg);
+  background: var(--accent);
+  color: var(--on-accent);
   font-size: 20px;
   line-height: 1;
   cursor: pointer;
@@ -459,35 +637,35 @@ main {
 
 /* --- setup screen --- */
 .setup {
-  padding: 40px 24px;
+  padding: var(--s-6) var(--s-5);
   max-width: 420px;
   margin: 0 auto;
 }
 .setup h1 { font-size: 20px; margin-bottom: 4px; }
-.setup p { color: var(--ink-soft); font-size: 14px; line-height: 1.6; }
+.setup p { color: var(--ink-soft); font-size: 13px; line-height: 1.6; }
 .setup label {
   display: block;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--ink-soft);
-  margin-top: 18px;
-  margin-bottom: 6px;
+  margin-top: var(--s-4);
+  margin-bottom: var(--s-2);
 }
 .setup input {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 11px 12px;
-  font-size: 14px;
+  padding: var(--s-3) var(--s-3);
+  font-size: 13px;
   font-family: var(--font-mono);
   background: var(--surface);
 }
 .setup button {
-  margin-top: 22px;
+  margin-top: var(--s-5);
   width: 100%;
-  padding: 13px;
+  padding: var(--s-3);
   border: none;
   border-radius: 8px;
   background: var(--ink);
@@ -504,10 +682,10 @@ main {
   position: fixed;
   inset: 0;
   z-index: 20;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--scrim);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--dur-base) var(--ease-standard);
 }
 .edit-backdrop.show {
   opacity: 1;
@@ -527,8 +705,9 @@ main {
   display: flex;
   flex-direction: column;
   transform: translateY(100%);
-  transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1);
-  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.16);
+  transition: transform var(--dur-max) var(--ease-standard);
+  /* 3.1: shadow removed — thin rules, no boxes/shadows (Signature Lock);
+     the backdrop already provides separation. */
 }
 .edit-sheet.show { transform: translateY(0); }
 @media (prefers-reduced-motion: reduce) {
@@ -539,7 +718,7 @@ main {
   flex: none;
   width: 36px;
   height: 4px;
-  margin: 10px auto 4px;
+  margin: var(--s-3) auto var(--s-1);
   border-radius: 999px;
   background: var(--border);
   cursor: grab;
@@ -551,39 +730,39 @@ body.sheet-open { overflow: hidden; }
 
 .edit-sheet-body {
   overflow-y: auto;
-  padding: 8px 20px calc(20px + env(safe-area-inset-bottom));
+  padding: var(--s-2) var(--s-5) calc(var(--s-5) + env(safe-area-inset-bottom));
 }
 
 .edit-title-input {
   width: 100%;
-  margin-bottom: 14px;
+  margin-bottom: var(--s-4);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 11px 12px;
-  font-size: 16px;
+  padding: var(--s-3) var(--s-3);
+  font-size: 15px;
   font-family: var(--font-sans);
   background: var(--bg);
   color: var(--ink);
 }
-.edit-title-input:focus { outline: none; border-color: var(--ink); }
+.edit-title-input:focus { outline: none; border-color: var(--accent); }
 
 .edit-field-label {
-  margin-bottom: 6px;
+  margin-bottom: var(--s-2);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-soft);
 }
 
-#edit-due-chips { margin-bottom: 14px; }
+#edit-due-chips { margin-bottom: var(--s-4); }
 
 .edit-select {
   width: 100%;
-  margin-bottom: 14px;
+  margin-bottom: var(--s-4);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 11px 12px;
+  padding: var(--s-3) var(--s-3);
   font-family: var(--font-mono);
   font-size: 13px;
   background: var(--bg);
@@ -596,12 +775,12 @@ body.sheet-open { overflow: hidden; }
   font-size: 12px;
   color: var(--ink-soft); /* neutral status ("Saving…") */
 }
-.edit-sheet-msg.error { color: var(--red); } /* validation / failed-save */
+.edit-sheet-msg.error { color: var(--overdue); } /* validation / failed-save */
 
 .edit-sheet-actions {
   display: flex;
-  gap: 10px;
-  margin-top: 4px;
+  gap: var(--s-3);
+  margin-top: var(--s-1);
 }
 .edit-btn {
   flex: 1;
@@ -613,10 +792,12 @@ body.sheet-open { overflow: hidden; }
   background: transparent;
   color: var(--ink);
 }
+/* Save is the sheet's only coral element (3.1 restraint) — and now it is
+   actually coral, not semantic red pressed into accent duty. */
 .edit-btn-save {
   border: none;
-  background: var(--red);
-  color: #fff;
+  background: var(--accent);
+  color: var(--on-accent);
 }
 .edit-btn-save:disabled { opacity: 0.4; cursor: default; }
 
@@ -632,25 +813,18 @@ body.sheet-open { overflow: hidden; }
   background: var(--ink);
   color: var(--bg);
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: 12px;
   white-space: nowrap;
-  padding: 9px 16px;
+  padding: var(--s-2) var(--s-4);
   border-radius: 999px;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity var(--dur-base) var(--ease-standard), transform var(--dur-base) var(--ease-standard);
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #161614;
-    --surface: #1E1E1B;
-    --ink: #F2F1EA;
-    --ink-soft: #8C8B84;
-    --border: #33322D;
-  }
-}
+/* (The old ad-hoc dark block that lived here is gone — charcoal mode is
+   resolved in the 3.1 token block at the top of this file.) */
 
 /* ===================================================================
    Signature Lock typography — self-hosted, no runtime font request
@@ -714,11 +888,9 @@ body.sheet-open { overflow: hidden; }
    should already be close.
    =================================================================== */
 :root {
-  --nk-cream: #F5F1E8;
-  --nk-coral: #E86441;
-  --nk-charcoal: #2C2C2C;
-  --nk-teal: #4A6B5C;
-  --nk-tan: #C9B89A;
+  /* 3.1: the --nk-* color primitives that used to be declared here moved
+     to the token block at the top of this file (single source; zero raw
+     hex outside it). Layout/typography variables stay where they were. */
 
   /* 2.1.1 — locked mandate domain color map. Semantic anchors: Intake =
      health/nourishment, Synthesis = thought/ink, Exercise = energy,
@@ -727,12 +899,14 @@ body.sheet-open { overflow: hidden; }
      Lock). Reuse this exact map in today's ring, the 2.3 seven-day rings,
      domain totals, and highlighted diagnosis rows — never invent a
      surface-local variant. If a color collapses against its background,
-     adjust keyline/opacity in that surface's rules, not these hues. */
+     adjust keyline/opacity in that surface's rules, not these hues.
+     3.1 regression contract: these five resolve to the exact same hex
+     values as before the token migration — the ring is pixel-identical. */
   --dm-intake: var(--nk-teal);      /* #4A6B5C */
   --dm-synthesis: var(--nk-charcoal); /* #2C2C2C */
   --dm-exercise: var(--nk-coral);   /* #E86441 */
   --dm-scripture: var(--nk-tan);    /* #C9B89A */
-  --dm-family: #A9533B;             /* burnt coral — Coral × Charcoal blend */
+  --dm-family: var(--nk-burnt-coral); /* #A9533B — burnt coral */
 
   --nk-serif: "Playfair Display", "Lora", serif;
   --nk-slab: "Roboto Slab", "Zilla Slab", serif;
@@ -752,7 +926,12 @@ body.sheet-open { overflow: hidden; }
      + 42px .capture-row (governed by #new-title: 11px+11px padding +
      2px border + ~18px text line box from font-size:15px) + 10px flat
      pad-bottom = 104px. */
-  --capture-h: 104px;
+  /* 3.1 recompute after the spacing snap (11px pads → 12px, flat bottom
+     10px → 12px): 12px pad-top + 34px .capture-due row (still governed by
+     .due-date-native's explicit height:34px) + 8px margin-bottom + 44px
+     .capture-row (#new-title: 12px+12px padding + 2px border + ~18px text
+     line box) + 12px flat pad-bottom = 110px. */
+  --capture-h: 110px;
 }
 
 /* --- bottom navigation: flat floating bar, mode inversion, no elevation --- */
@@ -768,7 +947,7 @@ body.sheet-open { overflow: hidden; }
   border-radius: 8px;
   border: 1px solid rgba(245, 241, 232, 0.14);
   background: var(--nk-charcoal); /* cream (Tasks) tab -> charcoal bar */
-  transition: transform 0.15s ease;
+  transition: transform var(--dur-fast) var(--ease-standard);
 }
 body.concursus-active .tabbar {
   background: var(--nk-cream); /* charcoal (CONCURSUS) tab -> cream bar */
@@ -1232,7 +1411,9 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
   display: none;
   align-items: center;
   gap: 14px;
-  margin: 0 20px 4px;
+  margin: 0 var(--s-5) 4px; /* 3.1: tracks the app gutter (20 → 24 snap) so
+     the ring stays flush with rows; the ring's internal geometry, colors,
+     and opacity grammar are untouched (2.1.1 regression contract) */
   padding: 10px 14px;
   border: 1px solid var(--nk-coral);
   border-radius: 8px;
@@ -1271,7 +1452,7 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
 /* One-shot fill-in on a confirmed completion write (class applied by
    renderMandateRing only on the false→true render). Opacity only — no
    layout properties, no bounce, quiet easing, inside the 160–220ms band. */
-.ring-seg.just-done { animation: ring-fill 200ms ease-out; }
+.ring-seg.just-done { animation: ring-fill var(--dur-base) ease-out; }
 @keyframes ring-fill {
   from { opacity: 0.28; }
   to { opacity: 1; }
@@ -1359,7 +1540,7 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
 /* Persistent checked state, distinct from .check.checking (the transient
    fade-before-removal animation Notion completions use) -- CONCURSUS rows
    never get removed, they just stay checked. */
-.check.checked { background: var(--ink); }
+.check.checked { background: var(--ink); border-color: var(--ink); color: var(--bg); }
 .check.checked svg { opacity: 1; }
 
 .row-eyebrow {

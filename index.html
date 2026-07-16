@@ -9,7 +9,10 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="theme-color" content="#1A1A1A">
+<!-- 3.1: theme-color per background mode; app.js re-points these on a
+     manual override (tasks-theme-v1). Values mirror the token block. -->
+<meta name="theme-color" id="meta-theme-light" media="(prefers-color-scheme: light)" content="#F5F1E8">
+<meta name="theme-color" id="meta-theme-dark" media="(prefers-color-scheme: dark)" content="#2C2C2C">
 <link rel="stylesheet" href="styles.css">
 <!-- Signature Lock typography: self-hosted only (Phase 0 req 11 forbids
      runtime font requests), so no Google Fonts link tag here on purpose.
@@ -31,6 +34,9 @@
 
 <div id="app" style="display:none">
   <div class="topbar">
+    <!-- 3.1 mode override: system preference is the default; a tap pins
+         cream/charcoal via localStorage (tasks-theme-v1). -->
+    <button type="button" class="mode-toggle" id="mode-toggle" aria-label="Switch background mode"></button>
     <div class="date" id="today-date"></div>
     <h1><span id="view-title">All</span> <span class="count" id="task-count"></span></h1>
     <div class="chips" id="view-chips"></div>
