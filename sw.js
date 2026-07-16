@@ -12,7 +12,15 @@
 // an update, and a phone that already installed v12 during Phase 1
 // on-device testing would keep serving the stale pre-Phase-3 shell
 // indefinitely.
-const CACHE_NAME = "tasks-shell-v13";
+// v13 -> v14: the "list content peeking behind the floating nav" polish
+// fix (bottom-scrim, main padding, tabbar border) changed the CONTENTS of
+// app.js, index.html, and styles.css but that commit forgot to bump this
+// version -- meaning the service worker had no way to detect anything
+// changed and would keep serving the stale v13 shell indefinitely,
+// regardless of how many times the installed PWA icon is killed and
+// reopened. Reinstalling the home-screen icon does not clear Cache
+// Storage; only an actual sw.js byte change (this bump) does.
+const CACHE_NAME = "tasks-shell-v14";
 const SHELL = [
   "./",
   "./index.html",
