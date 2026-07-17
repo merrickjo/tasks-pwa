@@ -128,7 +128,15 @@
 // as Tasks) and padding:0 (the generic main padding-bottom rules were
 // also silently re-applying capture clearance here — .cc-body owns this
 // view's clearance). Changed styles.css only.
-const CACHE_NAME = "tasks-shell-v28";
+// v28 -> v29: 3.9.2 — scrolled-down header collapse on CONCURSUS. The
+// full pinned header (date/title/ROLL/CARPE/weekly kicker/totals/
+// diagnosis) is too tall while working the cards, so past a 64px scroll
+// it collapses to one compact row: the seven rings (stretching) + the
+// mode toggle (right). Scroll back near the top (<16px — hysteresis, so
+// the ~200px layout shift can't re-cross a single boundary and flicker)
+// and the full header returns. Collapse state survives render() rebuilds
+// (completion taps mid-scroll). Changed concursus.js, styles.css.
+const CACHE_NAME = "tasks-shell-v29";
 const SHELL = [
   "./",
   "./index.html",

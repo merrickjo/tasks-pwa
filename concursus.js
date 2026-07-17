@@ -865,7 +865,7 @@ const CONCURSUS = (() => {
   // weekly review into this same container before it goes into #root —
   // everything in here freezes in place while .cc-body scrolls under it.
   function buildHeadbar() {
-    const bar = el("div", "cc-headbar");
+    const bar = el("div", "cc-headbar" + (ccCollapsed ? " collapsed" : ""));
     const row = el("div", "cc-headbar-row");
     const heading = el("div", "cc-heading");
     heading.appendChild(el("div", "cc-kicker", state.date));
@@ -874,6 +874,36 @@ const CONCURSUS = (() => {
     row.appendChild(buildModeToggle());
     bar.appendChild(row);
     return bar;
+  }
+
+  // 3.9.2 — scrolled-down collapse: the full header (date, title, ROLL
+  // line, CARPE badge, weekly kicker/totals/diagnosis) is too tall to pin
+  // in its entirety, so past a small scroll threshold it collapses to just
+  // the seven rings + the mode toggle in one compact row (CSS does the
+  // hiding/re-flowing — see .cc-headbar.collapsed rules). Hysteresis (add
+  // at >64, remove at <16) instead of one boundary: collapsing shrinks the
+  // header by a couple hundred px, and a single threshold right at that
+  // edge would let the layout shift re-cross it and flicker. State lives
+  // at module level so render() rebuilds (completion taps mid-scroll)
+  // preserve whichever mode the header is currently in.
+  let ccCollapsed = false;
+  let collapseScrollBound = false;
+  function bindHeadbarCollapse() {
+    if (collapseScrollBound) return;
+    collapseScrollBound = true;
+    window.addEventListener("scroll", () => {
+      if (!root) return;
+      const bar = root.querySelector(".cc-headbar");
+      if (!bar) return;
+      const y = window.scrollY;
+      if (!ccCollapsed && y > 64) {
+        ccCollapsed = true;
+        bar.classList.add("collapsed");
+      } else if (ccCollapsed && y < 16) {
+        ccCollapsed = false;
+        bar.classList.remove("collapsed");
+      }
+    }, { passive: true });
   }
 
   // Purely decorative — a flat-line d20 silhouette for the ungoverned empty
@@ -1049,6 +1079,7 @@ const CONCURSUS = (() => {
     root = container;
     boundContainer = container;
     render();
+    bindHeadbarCollapse(); // 3.9.2 — once; guarded internally
     if (!visibilityBound) {
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") render();

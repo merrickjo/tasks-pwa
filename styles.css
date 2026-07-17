@@ -1142,6 +1142,39 @@ body.concursus-active .bottom-scrim {
    the row with the toggle button instead of stacking above it. */
 .cc-heading { flex: 1; min-width: 0; }
 
+/* 3.9.2 — scrolled-down collapse (class toggled by concursus.js's scroll
+   listener). The full pinned header is too tall once you're actually
+   working the cards, so past the threshold everything except the seven
+   rings and the mode toggle hides, and those two lay out as one compact
+   row: rings stretch (order 1), toggle rides at their right (order 2 —
+   DOM order has the toggle's row first, flex order swaps them visually).
+   display:none (not opacity/height) so the pinned bar actually gives the
+   space back. Expanding again on scroll-up restores the full header. */
+.cc-headbar.collapsed {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.cc-headbar.collapsed .cc-heading,
+.cc-headbar.collapsed .cc-roll-line,
+.cc-headbar.collapsed .cc-carpe,
+.cc-headbar.collapsed .wk-kicker,
+.cc-headbar.collapsed .wk-more,
+.cc-headbar.collapsed .wk-diagnosis,
+.cc-headbar.collapsed .wk-detail { display: none; }
+.cc-headbar.collapsed .wk {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  order: 1;
+}
+.cc-headbar.collapsed .cc-headbar-row {
+  flex: none;
+  order: 2;
+}
+
 /* The scrollable body: cards, non-negotiables, and (ungoverned) the
    roll-stage. Same capture-less bottom clearance this view already had --
    CONCURSUS never renders .capture (#app, which owns it, is display:none
