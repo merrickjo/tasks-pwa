@@ -1416,6 +1416,23 @@ if (window.visualViewport) {
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
+  // 3.9: register() alone leaves a real gap — sw.js's skipWaiting()/
+  // clients.claim() make a new worker install and take control quickly,
+  // but the PAGE ALREADY OPEN when that happens keeps running on
+  // whatever HTML/CSS/JS it fetched under the OLD worker; nothing here
+  // told it to re-fetch. In practice that meant a shell update (like the
+  // CONCURSUS sticky-header change) could need two full relaunches on an
+  // installed iOS home-screen PWA -- the first just gets the new worker
+  // installed in the background, the second actually serves the new
+  // files -- which reads as "half the fix shipped." `refreshing` guards
+  // against a reload loop; controllerchange only fires once per actual
+  // takeover, never on the very first install (no previous controller).
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
 }
 
 const cfg = getConfig();

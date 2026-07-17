@@ -104,7 +104,20 @@
 // applyTheme() now syncs every .mode-toggle in the DOM instead of just
 // the one #mode-toggle by id, so both stay in lockstep. Changed
 // concursus.js, app.js, styles.css.
-const CACHE_NAME = "tasks-shell-v26";
+// v26 -> v27: 3.9 — on-device report after v26 shipped: only the
+// mode-toggle button showed up on CONCURSUS, none of the sticky-header/
+// scrolling-body/theme-color CSS did. Server-side content was confirmed
+// correct (fetched the live styles.css directly -- .cc-headbar,
+// --ink-rgb, --label-tan were all already there), so this was never a
+// missed push: register() had no controllerchange handler, so an already
+// -open installed PWA could sit on the OLD fetched HTML/CSS/JS for a
+// full extra relaunch after the new worker took over via skipWaiting()/
+// clients.claim() -- the toggle (built fresh by concursus.js, styled by
+// an already-cached, unchanged .mode-toggle rule) could appear to work
+// while the actually-new CSS hadn't been served to that page yet. app.js
+// now reloads once, automatically, the moment a new worker actually
+// takes control. Changed app.js only.
+const CACHE_NAME = "tasks-shell-v27";
 const SHELL = [
   "./",
   "./index.html",
