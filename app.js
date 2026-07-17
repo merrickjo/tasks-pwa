@@ -45,8 +45,15 @@ function applyTheme() {
     const m = document.getElementById(id);
     if (m) m.setAttribute("content", saved ? modeColor : (id === "meta-theme-dark" ? "#2C2C2C" : "#F5F1E8"));
   });
-  const btn = document.getElementById("mode-toggle");
-  if (btn) btn.innerHTML = eff === "dark" ? MODE_ICON_MOON : MODE_ICON_SUN;
+  // 3.8: CONCURSUS grew its own mode-toggle button (same .mode-toggle class,
+  // same icons, same tasks-theme-v1 contract) so the control carries over
+  // between tabs instead of only existing on Tasks. concursus.js rebuilds
+  // its copy from scratch on every render() (root.innerHTML reset), so
+  // querying by class and syncing every match is what keeps both buttons
+  // (when both happen to be in the DOM) showing the same icon, rather than
+  // reaching for the old single #mode-toggle id.
+  const icon = eff === "dark" ? MODE_ICON_MOON : MODE_ICON_SUN;
+  document.querySelectorAll(".mode-toggle").forEach((btn) => { btn.innerHTML = icon; });
 }
 
 // 3.5: icon-only relabel — cream/charcoal is token vocabulary, not UI
@@ -58,11 +65,15 @@ function applyTheme() {
 // active), same click/storage contract as before.
 const MODE_ICON_SUN = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><line x1="12" y1="2" x2="12" y2="4"></line><line x1="12" y1="20" x2="12" y2="22"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="2" y1="12" x2="4" y2="12"></line><line x1="20" y1="12" x2="22" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>';
 const MODE_ICON_MOON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
-document.getElementById("mode-toggle").addEventListener("click", () => {
+// Named (not inline) so concursus.js's own toggle button — same class,
+// same icons, same storage key — can wire up to the exact same handler
+// instead of re-implementing the flip logic a second time.
+function toggleTheme() {
   const next = (savedTheme() || systemTheme()) === "dark" ? "light" : "dark";
   try { localStorage.setItem(THEME_KEY, next); } catch {}
   applyTheme();
-});
+}
+document.getElementById("mode-toggle").addEventListener("click", toggleTheme);
 if (window.matchMedia) {
   const mq = window.matchMedia("(prefers-color-scheme: dark)");
   if (mq.addEventListener) mq.addEventListener("change", applyTheme);

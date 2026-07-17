@@ -92,7 +92,19 @@
 // nav. Both now size to nav-only clearance while CONCURSUS is active;
 // scrim itself still shows (still backstops the pill's inset gaps), just
 // shorter. Changed styles.css only.
-const CACHE_NAME = "tasks-shell-v25";
+// v25 -> v26: 3.8 — CONCURSUS gets the same frozen-header/scrolling-body
+// split Tasks already had (.topbar sticky, #list scrolling under it).
+// Previously the whole tab was one undifferentiated block, so nothing
+// stayed put on scroll and there was no light/dark toggle button on this
+// tab at all. Now: date, ROLL n, the CARPE badge, and the weekly review
+// (rings + its one-line diagnosis) live in a new sticky .cc-headbar; the
+// cards and non-negotiables scroll underneath in .cc-body. The toggle
+// button is a second .mode-toggle (same class/icons/dimensions as the
+// Tasks one) built by concursus.js and wired to app.js's toggleTheme() —
+// applyTheme() now syncs every .mode-toggle in the DOM instead of just
+// the one #mode-toggle by id, so both stay in lockstep. Changed
+// concursus.js, app.js, styles.css.
+const CACHE_NAME = "tasks-shell-v26";
 const SHELL = [
   "./",
   "./index.html",

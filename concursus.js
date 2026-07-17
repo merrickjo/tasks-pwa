@@ -837,6 +837,45 @@ const CONCURSUS = (() => {
     return n;
   }
 
+  // 3.8 — CONCURSUS's own light/dark toggle. Reuses app.js's global
+  // MODE_ICON_SUN/MOON, savedTheme()/systemTheme(), and toggleTheme() —
+  // app.js loads first (see file header), so these are plain global
+  // functions/consts, not something concursus.js needs to import or
+  // duplicate. Same .mode-toggle class as the Tasks topbar's button, so
+  // it's pixel-identical (40px box, 20px icon, --ink-soft glyph) rather
+  // than a second, hand-tuned copy that could drift out of sync.
+  function buildModeToggle() {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "mode-toggle";
+    btn.id = "concursus-mode-toggle";
+    btn.setAttribute("aria-label", "Switch background mode");
+    const eff = (typeof savedTheme === "function" && savedTheme()) ||
+      (typeof systemTheme === "function" ? systemTheme() : "light");
+    btn.innerHTML = eff === "dark" ? MODE_ICON_MOON : MODE_ICON_SUN;
+    btn.addEventListener("click", () => {
+      if (typeof toggleTheme === "function") toggleTheme();
+    });
+    return btn;
+  }
+
+  // 3.8 — sticky header (see styles.css .cc-headbar): date, CONCURSUS
+  // title, and the mode-toggle, laid out the same way as .topbar-heading
+  // on the Tasks tab. render() appends the ROLL line / CARPE badge /
+  // weekly review into this same container before it goes into #root —
+  // everything in here freezes in place while .cc-body scrolls under it.
+  function buildHeadbar() {
+    const bar = el("div", "cc-headbar");
+    const row = el("div", "cc-headbar-row");
+    const heading = el("div", "cc-heading");
+    heading.appendChild(el("div", "cc-kicker", state.date));
+    heading.appendChild(el("h1", "cc-title", "CONCURSUS"));
+    row.appendChild(heading);
+    row.appendChild(buildModeToggle());
+    bar.appendChild(row);
+    return bar;
+  }
+
   // Purely decorative — a flat-line d20 silhouette for the ungoverned empty
   // state. Static SVG string via innerHTML (safe: hardcoded, no user input)
   // rather than createElementNS boilerplate for a one-off icon. No fill, no
@@ -878,24 +917,29 @@ const CONCURSUS = (() => {
     state = loadState();
     root.innerHTML = "";
 
-    const head = el("div", "cc-head");
-    head.appendChild(el("div", "cc-kicker", state.date));
-    head.appendChild(el("h1", "cc-title", "CONCURSUS"));
-    root.appendChild(head);
+    // 3.8: split into a sticky header (date, ROLL n, CARPE badge, the
+    // weekly review + its one-line diagnosis — everything that should
+    // freeze in place) and a plain scrollable body (die/roll-stage, or the
+    // cards + non-negotiables) — same topbar/#list split Tasks already
+    // has. Both containers own their own horizontal padding now (see
+    // styles.css), so #concursus-view itself carries none.
+    const headbar = buildHeadbar();
+    root.appendChild(headbar);
+    const body = el("div", "cc-body");
 
     if (state.roll === null) {
-      const stage = el("div", "cc-roll-stage");
-      stage.appendChild(buildDieIcon());
-      stage.appendChild(el("p", "cc-ungoverned", "No roll yet — the day is ungoverned."));
+      body.appendChild(buildDieIcon());
+      body.appendChild(el("p", "cc-ungoverned", "No roll yet — the day is ungoverned."));
       const btn = el("button", "cc-roll-btn", "ROLL D20");
       btn.addEventListener("click", rollDie);
-      stage.appendChild(btn);
-      stage.appendChild(buildManualEntry());
-      root.appendChild(stage);
+      body.appendChild(btn);
+      body.appendChild(buildManualEntry());
+      root.appendChild(body);
       // 2.3 — the weekly review reads history, not today's roll, so it
       // renders on the ungoverned surface too: an unrolled today is
-      // exactly when last week's pattern is worth seeing.
-      root.appendChild(buildWeeklyReview());
+      // exactly when last week's pattern is worth seeing. Lives in the
+      // sticky headbar like the governed case below, not the scrolling body.
+      headbar.appendChild(buildWeeklyReview());
       return;
     }
 
@@ -906,13 +950,12 @@ const CONCURSUS = (() => {
       // Phase 3 req 13 -- fail closed. Show the failure plainly and offer
       // the one recovery path (a fresh roll) rather than rendering a
       // partial or garbled mandate.
-      const errStage = el("div", "cc-roll-stage");
-      errStage.appendChild(el("p", "cc-error",
+      body.appendChild(el("p", "cc-error",
         "Couldn't resolve today's mandate for roll " + state.roll + ". Try rolling again."));
       const retryBtn = el("button", "cc-roll-btn", "ROLL D20");
       retryBtn.addEventListener("click", rollDie);
-      errStage.appendChild(retryBtn);
-      root.appendChild(errStage);
+      body.appendChild(retryBtn);
+      root.appendChild(body);
       return;
     }
     const s = status();
@@ -923,14 +966,15 @@ const CONCURSUS = (() => {
     const reroll = el("button", "cc-reroll", "re-roll");
     reroll.addEventListener("click", () => requestRoll(randomRoll()));
     rollLine.appendChild(reroll);
-    root.appendChild(rollLine);
+    headbar.appendChild(rollLine);
 
-    if (s.carpe) root.appendChild(el("div", "cc-carpe", "⚡ CARPE POINT EARNED"));
+    if (s.carpe) headbar.appendChild(el("div", "cc-carpe", "⚡ CARPE POINT EARNED"));
 
     // 2.3 — Weekly Mandate Review, directly below the roll line (placement
     // revised 16 Jul: read the week's pattern first, then work today's
     // cards). Still the one seven-day visualization in the whole app.
-    root.appendChild(buildWeeklyReview());
+    // 3.8: now part of the sticky headbar, not the scrolling body.
+    headbar.appendChild(buildWeeklyReview());
 
     DOMAINS.forEach(([key, label]) => {
       const card = el("div", "cc-card" + (state.done[key] ? " done" : ""));
@@ -959,7 +1003,7 @@ const CONCURSUS = (() => {
           toggleDomain(key);
         }
       });
-      root.appendChild(card);
+      body.appendChild(card);
     });
 
     const nonneg = el("details", "cc-nonneg");
@@ -973,7 +1017,7 @@ const CONCURSUS = (() => {
       nonnegList.appendChild(item);
     });
     nonneg.appendChild(nonnegList);
-    root.appendChild(nonneg);
+    body.appendChild(nonneg);
 
     // DM3-01 — FAMILY invariants, a second accordion (not merged into the
     // one above): the ticket treats these as a distinct layer under the
@@ -989,7 +1033,8 @@ const CONCURSUS = (() => {
       familyNonnegList.appendChild(item);
     });
     familyNonneg.appendChild(familyNonnegList);
-    root.appendChild(familyNonneg);
+    body.appendChild(familyNonneg);
+    root.appendChild(body);
   }
 
   // ---------- init (Phase 1 req 4) ----------
