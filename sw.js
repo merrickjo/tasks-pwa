@@ -84,7 +84,15 @@
 // a new --ink-rgb triple for the translucent overlays, and a cream-safe
 // --label-tan for the eyebrow labels, which were 1.7:1 on cream). Same
 // tasks-theme-v1 contract, no storage change. Changed styles.css only.
-const CACHE_NAME = "tasks-shell-v24";
+// v24 -> v25: bug fix — .bottom-scrim and #concursus-view's own bottom
+// padding both reserved --capture-h (110px) on top of the nav-bar
+// clearance, but CONCURSUS never renders .capture (it lives inside #app,
+// which is display:none on this tab) -- that unused capture height showed
+// up as a dead solid-color gap between the last card and the floating
+// nav. Both now size to nav-only clearance while CONCURSUS is active;
+// scrim itself still shows (still backstops the pill's inset gaps), just
+// shorter. Changed styles.css only.
+const CACHE_NAME = "tasks-shell-v25";
 const SHELL = [
   "./",
   "./index.html",

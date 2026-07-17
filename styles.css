@@ -1077,6 +1077,16 @@ main {
   background: var(--bg);
   pointer-events: none;
 }
+/* CONCURSUS has no capture/add-task bar (#app, which owns .capture, is
+   display:none while this tab is active) -- the scrim only ever needs to
+   backstop the floating nav pill's rounded-corner insets here, not the
+   110px --capture-h clearance too. Left as-is, that unused capture height
+   showed up as a dead solid-color gap between the last card and the nav.
+   Scrim itself stays (still needed to guarantee scrolled cards never peek
+   through the pill's inset gaps), just sized to nav-only clearance. */
+body.concursus-active .bottom-scrim {
+  height: calc(var(--nk-tabbar-inset) + var(--nk-tabbar-h) + var(--nk-tabbar-inset) + env(safe-area-inset-bottom) + 16px);
+}
 
 /* ===== CONCURSUS tab — follows the same --bg/--ink theme toggle as the
    Tasks page (previously hardcoded to always-charcoal; see the
@@ -1086,7 +1096,9 @@ main {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--nk-slab);
-  padding: 24px 20px calc(var(--capture-h) + var(--nk-tabbar-inset) + var(--nk-tabbar-h) + var(--nk-tabbar-inset) + env(safe-area-inset-bottom));
+  /* Same capture-less bottom clearance as .bottom-scrim above (this view
+     never renders .capture, so it only needs to clear the floating nav). */
+  padding: 24px 20px calc(var(--nk-tabbar-inset) + var(--nk-tabbar-h) + var(--nk-tabbar-inset) + env(safe-area-inset-bottom) + 16px);
 }
 .cc-kicker {
   font-size: 11px;
