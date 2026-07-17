@@ -76,7 +76,15 @@
 // attribute) in a properly sized 40px tap target. No contract change —
 // same click handler, same tasks-theme-v1 storage. Changed index.html,
 // styles.css, app.js.
-const CACHE_NAME = "tasks-shell-v23";
+// v23 -> v24: bug fix — CONCURSUS (#concursus-view and everything under
+// it: .cc-*, .wk-*, the tab-bar's cream/charcoal inversion) was hardcoded
+// to a permanent charcoal surface and ignored tasks-theme-v1 entirely, so
+// the light/dark toggle only ever affected the Tasks tab. Swapped its
+// background/text/border colors over to the same --bg/--ink tokens (plus
+// a new --ink-rgb triple for the translucent overlays, and a cream-safe
+// --label-tan for the eyebrow labels, which were 1.7:1 on cream). Same
+// tasks-theme-v1 contract, no storage change. Changed styles.css only.
+const CACHE_NAME = "tasks-shell-v24";
 const SHELL = [
   "./",
   "./index.html",

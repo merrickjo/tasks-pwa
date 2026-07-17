@@ -49,6 +49,10 @@
   --nk-family: #99612E;         /* #C07A3A tint darkened to 4.54:1 on cream */
   --nk-amber: #8E672D;          /* #B8863A tint darkened to 4.51:1 on cream */
   --nk-soft: #6B6B66;           /* muted ink (4.75:1 on cream) */
+  --nk-tan-oncream: #816B45;    /* CONCURSUS eyebrow-label fix: raw --nk-tan
+                                   is only 1.72:1 on cream (fine on charcoal,
+                                   6.51:1) — same tint darkened to 4.51:1 on
+                                   cream, per this file's own contrast gate */
   /* charcoal-mode set — each L solved to ≥4.5:1 on #34332F (surface,
      the stricter bound; bg #2C2C2C passes a fortiori) */
   --nk-surface-charcoal: #34332F;
@@ -68,9 +72,13 @@
   --bg: var(--nk-cream);
   --surface: #FFFFFF;
   --ink: var(--nk-charcoal);
+  --ink-rgb: 44, 44, 44;        /* = --nk-charcoal, as an RGB triple so CONCURSUS's
+                                   translucent borders/text (rgba(var(--ink-rgb), α))
+                                   fade correctly in whichever mode is active */
   --ink-soft: var(--nk-soft);
   --border: var(--nk-border-cream);
   --bg-subtle: var(--nk-subtle-cream);
+  --label-tan: var(--nk-tan-oncream); /* CONCURSUS eyebrow labels — cream-safe tan */
   --accent: var(--nk-coral);
   --on-accent: var(--nk-cream); /* glyphs sitting on a coral fill */
   --overdue: var(--nk-red);
@@ -111,9 +119,11 @@
     --bg: var(--nk-charcoal);
     --surface: var(--nk-surface-charcoal);
     --ink: var(--nk-cream);
+    --ink-rgb: 245, 241, 232;
     --ink-soft: var(--nk-soft-charcoal);
     --border: var(--nk-border-charcoal);
     --bg-subtle: var(--nk-subtle-charcoal);
+    --label-tan: var(--nk-tan);
     --overdue: var(--nk-overdue-charcoal);
     --amber: var(--nk-amber-charcoal);
     --green: var(--nk-teal-charcoal);
@@ -129,9 +139,11 @@
   --bg: var(--nk-charcoal);
   --surface: var(--nk-surface-charcoal);
   --ink: var(--nk-cream);
+  --ink-rgb: 245, 241, 232;
   --ink-soft: var(--nk-soft-charcoal);
   --border: var(--nk-border-charcoal);
   --bg-subtle: var(--nk-subtle-charcoal);
+  --label-tan: var(--nk-tan);
   --overdue: var(--nk-overdue-charcoal);
   --amber: var(--nk-amber-charcoal);
   --green: var(--nk-teal-charcoal);
@@ -974,10 +986,26 @@ body.sheet-open { overflow: hidden; }
   background: var(--nk-charcoal); /* cream (Tasks) tab -> charcoal bar */
   transition: transform var(--dur-fast) var(--ease-standard);
 }
-body.concursus-active .tabbar {
-  background: var(--nk-cream); /* charcoal (CONCURSUS) tab -> cream bar */
+/* This inversion only holds while CONCURSUS is actually charcoal, which is
+   now only true in dark mode (CONCURSUS follows the light/dark toggle same
+   as Tasks — see #concursus-view below). In light mode CONCURSUS renders
+   cream just like Tasks, so the nav should stay in its default charcoal
+   state instead of flipping to cream and blending into the page. Same
+   two-entry-point duplication as the --bg/--ink dark tokens above. */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) body.concursus-active .tabbar {
+    background: var(--nk-cream);
+    border-color: rgba(44, 44, 44, 0.14);
+  }
+  html:not([data-theme="light"]) body.concursus-active .tab-btn { color: var(--nk-charcoal); }
+  html:not([data-theme="light"]) body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
+}
+html[data-theme="dark"] body.concursus-active .tabbar {
+  background: var(--nk-cream);
   border-color: rgba(44, 44, 44, 0.14);
 }
+html[data-theme="dark"] body.concursus-active .tab-btn { color: var(--nk-charcoal); }
+html[data-theme="dark"] body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
 /* Nav spec: hide the bar while the keyboard is up so capture rides the
    keyboard alone (app.js toggles this class from a visualViewport listener). */
 body.keyboard-open .tabbar { display: none; }
@@ -1000,7 +1028,6 @@ body.keyboard-open .bottom-scrim { display: none; }
   opacity: 0.55;
   cursor: pointer;
 }
-body.concursus-active .tab-btn { color: var(--nk-charcoal); }
 .tab-btn.active {
   opacity: 1;
   color: var(--nk-coral);
@@ -1050,13 +1077,14 @@ main {
   background: var(--bg);
   pointer-events: none;
 }
-body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
 
-/* ===== CONCURSUS tab — charcoal mode, flat, rule lines only ===== */
+/* ===== CONCURSUS tab — follows the same --bg/--ink theme toggle as the
+   Tasks page (previously hardcoded to always-charcoal; see the
+   dark-mode-only nav overrides above for the corresponding nav-bar fix) ===== */
 #concursus-view {
   min-height: 100dvh;
-  background: var(--nk-charcoal);
-  color: var(--nk-cream);
+  background: var(--bg);
+  color: var(--ink);
   font-family: var(--nk-slab);
   padding: 24px 20px calc(var(--capture-h) + var(--nk-tabbar-inset) + var(--nk-tabbar-h) + var(--nk-tabbar-inset) + env(safe-area-inset-bottom));
 }
@@ -1064,7 +1092,7 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
   font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--nk-tan);
+  color: var(--label-tan);
 }
 .cc-title {
   font-family: var(--nk-serif);
@@ -1108,18 +1136,18 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
 .cc-manual-input {
   flex: 1;
   background: transparent;
-  border: 1px solid rgba(245, 241, 232, 0.25);
+  border: 1px solid rgba(var(--ink-rgb), 0.25);
   border-radius: 8px;
   padding: 10px 12px;
-  color: var(--nk-cream);
+  color: var(--ink);
   font-family: var(--nk-slab);
   font-size: 14px;
 }
 .cc-manual-btn {
-  border: 1px solid rgba(245, 241, 232, 0.25);
+  border: 1px solid rgba(var(--ink-rgb), 0.25);
   border-radius: 8px;
   background: transparent;
-  color: var(--nk-cream);
+  color: var(--ink);
   font-family: var(--nk-slab);
   font-size: 12px;
   letter-spacing: 0.1em;
@@ -1133,12 +1161,12 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
 }
 .cc-roll-line { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
 .cc-roll-num { font-family: var(--nk-serif); font-size: 22px; font-weight: 700; }
-.cc-roll-count { font-size: 13px; color: var(--nk-tan); }
+.cc-roll-count { font-size: 13px; color: var(--label-tan); }
 .cc-reroll {
   margin-left: auto;
   background: none;
   border: none;
-  color: rgba(245, 241, 232, 0.45);
+  color: rgba(var(--ink-rgb), 0.45);
   font-family: var(--nk-slab);
   font-size: 12px;
   text-decoration: underline;
@@ -1161,11 +1189,11 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
   width: 100%;
   text-align: left;
   background: transparent;
-  border: 1px solid rgba(245, 241, 232, 0.2);
+  border: 1px solid rgba(var(--ink-rgb), 0.2);
   border-radius: 8px;
   padding: 14px 16px;
   margin-bottom: 10px;
-  color: var(--nk-cream);
+  color: var(--ink);
   cursor: pointer;
 }
 .cc-card.done { border-color: var(--nk-teal); }
@@ -1174,9 +1202,9 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
   font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--nk-tan);
+  color: var(--label-tan);
 }
-.cc-card-check { font-size: 11px; letter-spacing: 0.1em; color: rgba(245, 241, 232, 0.4); }
+.cc-card-check { font-size: 11px; letter-spacing: 0.1em; color: rgba(var(--ink-rgb), 0.4); }
 .cc-card.done .cc-card-check { color: var(--nk-teal); }
 .cc-card-name { font-family: var(--nk-serif); font-size: 18px; font-weight: 500; }
 .cc-card-detail { font-size: 13px; font-weight: 300; margin-top: 4px; line-height: 1.5; opacity: 0.85; }
@@ -1191,7 +1219,7 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
 }
 .cc-nonneg {
   margin-top: 20px;
-  border: 1px solid rgba(245, 241, 232, 0.2);
+  border: 1px solid rgba(var(--ink-rgb), 0.2);
   border-radius: 8px;
 }
 .cc-nonneg-summary {
@@ -1201,24 +1229,25 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
   letter-spacing: 0.12em;
   cursor: pointer;
 }
-.cc-nonneg-list { border-top: 1px solid rgba(245, 241, 232, 0.2); }
+.cc-nonneg-list { border-top: 1px solid rgba(var(--ink-rgb), 0.2); }
 .cc-nonneg-item {
   display: grid;
   grid-template-columns: 76px 1fr;
   gap: 12px;
   padding: 12px 16px;
-  border-bottom: 1px solid rgba(245, 241, 232, 0.12);
+  border-bottom: 1px solid rgba(var(--ink-rgb), 0.12);
   font-size: 12px;
   line-height: 1.5;
 }
 .cc-nonneg-item:last-child { border-bottom: 0; }
-.cc-nonneg-label { color: var(--nk-tan); }
+.cc-nonneg-label { color: var(--label-tan); }
 .cc-nonneg-text { opacity: 0.8; }
 .cc-overlay {
   position: fixed;
   inset: 0;
   z-index: 30;
-  background: rgba(44, 44, 44, 0.92);
+  background: var(--scrim); /* full-screen modal backdrop — stays a neutral
+    dark scrim in both themes, same token used for the app's other overlays */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1276,7 +1305,7 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.14em;
-  color: rgba(245, 241, 232, 0.55);
+  color: rgba(var(--ink-rgb), 0.55);
   display: flex;
   justify-content: space-between;
   align-items: baseline;
@@ -1295,7 +1324,7 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
   background: transparent;
   border: none;
   padding: 2px 0;
-  color: rgba(245, 241, 232, 0.55);
+  color: rgba(var(--ink-rgb), 0.55);
   font-family: var(--font-mono);
   font-size: 9.5px;
   letter-spacing: 0.04em;
@@ -1304,8 +1333,8 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
   border-radius: 6px;
 }
 .wk-day svg { width: 100%; max-width: 40px; height: auto; display: block; margin: 0 auto 3px; }
-.wk-day.today { color: var(--nk-cream); }
-.wk-day.selected { background: rgba(245, 241, 232, 0.08); }
+.wk-day.today { color: var(--ink); }
+.wk-day.selected { background: rgba(var(--ink-rgb), 0.08); }
 /* Person-highlight (tap a FAMILY person): assigned days hold, others recede. */
 .wk-day.mute-day { opacity: 0.3; }
 
@@ -1313,7 +1342,7 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
    color — including charcoal-on-charcoal — reads with a light halo. */
 .wk-track {
   fill: none;
-  stroke: rgba(245, 241, 232, 0.16);
+  stroke: rgba(var(--ink-rgb), 0.16);
   stroke-width: 8;
 }
 .wk-seg {
@@ -1334,7 +1363,7 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
   font-family: var(--font-mono);
   font-size: 10.5px;
   letter-spacing: 0.14em;
-  color: rgba(245, 241, 232, 0.45);
+  color: rgba(var(--ink-rgb), 0.45);
   cursor: pointer;
   list-style: none;
 }
@@ -1349,10 +1378,10 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
   margin-top: 10px;
 }
 .wk-total {
-  border: 1px solid rgba(245, 241, 232, 0.2);
+  border: 1px solid rgba(var(--ink-rgb), 0.2);
   border-radius: 6px;
   background: transparent;
-  color: rgba(245, 241, 232, 0.8);
+  color: rgba(var(--ink-rgb), 0.8);
   font-family: var(--font-mono);
   font-size: 10.5px;
   letter-spacing: 0.05em;
@@ -1362,15 +1391,15 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
   white-space: nowrap;
 }
 .wk-total[aria-pressed="true"] {
-  border-color: var(--nk-cream);
-  color: var(--nk-cream);
+  border-color: var(--ink);
+  color: var(--ink);
 }
 .wk-total .ring-dot { opacity: 1; }
 /* The 2.1.1 dot map works on charcoal for teal/coral/tan/burnt-coral;
    Synthesis charcoal gets a keyline box instead of a hue change. */
 .wk-total .ring-dot.dom-synthesis,
 .wk-detail .ring-dot.dom-synthesis {
-  box-shadow: 0 0 0 1px rgba(245, 241, 232, 0.45);
+  box-shadow: 0 0 0 1px rgba(var(--ink-rgb), 0.45);
 }
 
 .wk-family {
@@ -1383,7 +1412,7 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
   font-family: var(--font-mono);
   font-size: 10.5px;
   letter-spacing: 0.14em;
-  color: rgba(245, 241, 232, 0.55);
+  color: rgba(var(--ink-rgb), 0.55);
 }
 
 .wk-diagnosis {
@@ -1391,12 +1420,12 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
   font-size: 13px;
   font-weight: 300;
   line-height: 1.6;
-  color: rgba(245, 241, 232, 0.85);
+  color: rgba(var(--ink-rgb), 0.85);
   margin: 14px 0 0;
 }
 
 .wk-detail {
-  border: 1px solid rgba(245, 241, 232, 0.2);
+  border: 1px solid rgba(var(--ink-rgb), 0.2);
   border-radius: 8px;
   padding: 12px 14px;
   margin-top: 12px;
@@ -1406,7 +1435,7 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
   font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(245, 241, 232, 0.55);
+  color: rgba(var(--ink-rgb), 0.55);
   margin-bottom: 8px;
 }
 .wk-detail-row {
@@ -1416,10 +1445,10 @@ body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
   font-family: var(--font-mono);
   font-size: 12px;
   padding: 3px 0;
-  color: rgba(245, 241, 232, 0.8);
+  color: rgba(var(--ink-rgb), 0.8);
 }
 .wk-detail-row .wk-detail-state { margin-left: auto; }
-.wk-detail-row.done { color: var(--nk-cream); }
+.wk-detail-row.done { color: var(--ink); }
 
 /* ===================================================================
    Phase 3 — Roll-to-Tasks projection, rendered inside the Tasks (cream)
