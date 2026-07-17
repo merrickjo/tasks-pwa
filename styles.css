@@ -1098,6 +1098,20 @@ body.concursus-active .bottom-scrim {
   font-family: var(--nk-slab);
   /* .cc-headbar and .cc-body (below) now own their own padding, mirroring
      .topbar/#list -- this view no longer sets its own. */
+  /* 3.9.1 — THE sticky-header fix. This element is a <main>, so the
+     generic `main { overflow-y: auto }` rule (Tasks-list scrolling, line
+     ~394) applied here too. An overflow:auto ancestor becomes the
+     scrollport position:sticky sticks to — and since this view never
+     scrolls itself (it grows; the DOCUMENT scrolls), .cc-headbar was
+     sticking to a box that never moves, i.e. visibly not sticking at
+     all. Tasks never hit this because .topbar is a SIBLING of main#list,
+     not inside it. overflow:visible makes the viewport the scrollport
+     again, exactly like the Tasks topbar. */
+  overflow: visible;
+  /* Also neutralize the generic main padding rules (96px base +
+     capture-stack calc at ~line 1057) that silently re-applied here —
+     .cc-body owns this view's bottom clearance now. */
+  padding: 0;
 }
 
 /* 3.8: CONCURSUS's header (date, ROLL n, weekly review + its one-line

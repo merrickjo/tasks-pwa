@@ -117,7 +117,18 @@
 // while the actually-new CSS hadn't been served to that page yet. app.js
 // now reloads once, automatically, the moment a new worker actually
 // takes control. Changed app.js only.
-const CACHE_NAME = "tasks-shell-v27";
+// v27 -> v28: 3.9.1 — the actual sticky-header root cause. #concursus-view
+// is a <main>, so the generic `main { overflow-y: auto }` rule (written
+// for the Tasks list) applied to it too; an overflow:auto ancestor is the
+// scrollport sticky positions against, and since #concursus-view never
+// scrolls itself (it grows — the document scrolls), .cc-headbar was
+// sticking to a box that never moves. Tasks' .topbar never hit this
+// because it's a sibling of main#list, not a child. #concursus-view now
+// forces overflow:visible (viewport becomes the scrollport again, same
+// as Tasks) and padding:0 (the generic main padding-bottom rules were
+// also silently re-applying capture clearance here — .cc-body owns this
+// view's clearance). Changed styles.css only.
+const CACHE_NAME = "tasks-shell-v28";
 const SHELL = [
   "./",
   "./index.html",
