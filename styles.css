@@ -395,13 +395,34 @@ body {
   text-align: left;
 }
 
+/* 4.0.4 — the five Area silhouettes, in EVERY mode, not just e-ink.
+   They were introduced as an e-ink-only substitute for hue, but the same
+   marks now also appear as glyphs in the row tags and the Area picker
+   (AREAS[].mark in app.js), and those have to agree with the dot in cream
+   and charcoal too — a round dot beside a ■ tag would be a worse
+   inconsistency than the one this replaced. Colour still carries Area in
+   the colour modes; shape is now redundant reinforcement, which is the
+   right way round and happens to fix colour-blind reading as well.
+     Church ● filled circle    Family   ○ hollow circle
+     Blibli ■ filled square    Personal □ hollow square
+     Fitness ◆ filled diamond
+   The e-ink block only re-points --area-* to black; the geometry is here
+   and shared. */
 .area-dot {
   flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  border: 2px solid var(--area-c, var(--ink-soft));
   background: var(--area-c, var(--ink-soft));
 }
+.a-church .area-dot { border-radius: 999px; }
+.a-blibli .area-dot { border-radius: 1px; }
+.a-fitness .area-dot { border-radius: 1px; transform: rotate(45deg) scale(0.82); }
+.a-family .area-dot { border-radius: 999px; background: var(--bg); }
+.a-personal .area-dot { border-radius: 1px; background: var(--bg); }
+/* the No Area triage bucket is the absence of an Area, not a sixth one */
+.a-noarea .area-dot { display: none; }
 
 .area-head .area-name { color: var(--area-c, var(--ink)); }
 
@@ -1899,18 +1920,10 @@ body.concursus-active .bottom-scrim {
      Fitness ◆ filled diamond
    The same five marks are reused for the CONCURSUS domains in §2, so both
    surfaces speak one vocabulary instead of two. */
-:root[data-theme="eink"] .area-dot {
-  width: 10px;
-  height: 10px;
-  box-sizing: border-box;
-  background: var(--ink);
-  border: 2px solid var(--ink);
-}
-:root[data-theme="eink"] .a-church .area-dot { border-radius: 999px; }
-:root[data-theme="eink"] .a-blibli .area-dot { border-radius: 1px; }
-:root[data-theme="eink"] .a-fitness .area-dot { border-radius: 1px; transform: rotate(45deg) scale(0.82); }
-:root[data-theme="eink"] .a-family .area-dot { border-radius: 999px; background: var(--bg); }
-:root[data-theme="eink"] .a-personal .area-dot { border-radius: 1px; background: var(--bg); }
+/* 4.0.4: the Area silhouettes moved to the base .area-dot rules — they
+   are shared by all three modes now. Nothing needed here: --area-* is
+   already re-pointed to black in the token block above, and the hollow
+   variants fill with var(--bg), which resolves to paper. */
 
 :root[data-theme="eink"] .area-head .area-count { border-color: var(--eink-mid); color: var(--eink-strong); }
 /* the empty-group signal was opacity 0.45, which dithers into noise —

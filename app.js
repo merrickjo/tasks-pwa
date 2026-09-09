@@ -243,12 +243,19 @@ function isToday(due) {
 }
 
 // --- areas (data vocabulary; used for tags, grouping, quick-add) ---
+// 4.0.4 — monochrome geometric marks replace the colour emoji. On a B&W
+// panel colour emoji desaturate to grey blobs (👨‍👩‍👦 was unreadable at
+// 12px), and Personal's ● actively collided with the filled circle that
+// now means Church. These five are the same silhouettes .area-dot draws,
+// so the group header's dot, the row tag and the Area picker in both the
+// capture bar and the edit sheet all speak one vocabulary. U+25A0-25CF,
+// covered by every system font that ships on iOS and Android.
 const AREAS = [
-  { name: "Church", emoji: "⛪", cls: "a-church" },
-  { name: "Blibli", emoji: "🛒", cls: "a-blibli" },
-  { name: "Fitness", emoji: "💪", cls: "a-fitness" },
-  { name: "Family", emoji: "👨‍👩‍👦", cls: "a-family" },
-  { name: "Personal", emoji: "●", cls: "a-personal" },
+  { name: "Church", mark: "●", cls: "a-church" },
+  { name: "Blibli", mark: "■", cls: "a-blibli" },
+  { name: "Fitness", mark: "◆", cls: "a-fitness" },
+  { name: "Family", mark: "○", cls: "a-family" },
+  { name: "Personal", mark: "□", cls: "a-personal" },
 ];
 function areaCls(name) {
   const a = AREAS.find((x) => x.name === name);
@@ -739,14 +746,13 @@ function renderAreaGroups(list, tasks) {
   const groups = AREAS.map((a) => ({
     key: a.name,
     label: a.name,
-    emoji: a.emoji,
     cls: a.cls,
     items: tasks.filter((t) => t.area === a.name),
     alwaysShow: true,
   }));
   const noArea = tasks.filter((t) => !t.area);
   if (noArea.length) {
-    groups.push({ key: "NoArea", label: "No Area", emoji: "", cls: "", items: noArea, alwaysShow: false });
+    groups.push({ key: "NoArea", label: "No Area", cls: "a-noarea", items: noArea, alwaysShow: false });
   }
 
   groups.forEach((g) => {
@@ -757,7 +763,10 @@ function renderAreaGroups(list, tasks) {
     head.className = "area-head " + g.cls + (isCollapsed ? " collapsed" : "") + (!g.items.length ? " zero" : "");
     head.innerHTML =
       `<span class="area-dot"></span>` +
-      `<span class="area-name">${g.emoji ? g.emoji + " " : ""}${g.label}</span>` +
+      // no glyph here: .area-dot already draws this Area's mark immediately
+      // to the left, and repeating it was the redundancy that made the old
+      // emoji read as noise.
+      `<span class="area-name">${g.label}</span>` +
       `<span class="area-count">${g.items.length}</span>` +
       `<svg class="area-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6,9 12,15 18,9"/></svg>`;
 
@@ -880,7 +889,9 @@ function renderRow(task, opts = {}) {
     const areaTag = document.createElement("span");
     areaTag.className = "tag area " + areaCls(task.area);
     const a = AREAS.find((x) => x.name === task.area);
-    areaTag.textContent = a && a.emoji ? `${a.emoji} ${task.area}` : task.area;
+    // Smart views group by date, so this tag is the only Area signal on the
+    // row — it keeps the mark even though the All view's header has one.
+    areaTag.textContent = a && a.mark ? `${a.mark} ${task.area}` : task.area;
     meta.appendChild(areaTag);
   }
 

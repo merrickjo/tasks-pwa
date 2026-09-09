@@ -177,7 +177,14 @@
 // `body.keyboard-open .tabbar { display: none }` rule had never once
 // applied -- the nav stayed up over the input every time you typed.
 // !important on that rule and on the matching .bottom-scrim one.
-const CACHE_NAME = "tasks-shell-v34";
+// v34 -> v35: 4.0.4 -- colour emoji retired from the Area vocabulary. They
+// desaturate to grey blobs on the panel and Personal's dot collided with
+// the filled circle that now means Church. Replaced by the same five
+// geometric marks .area-dot draws, which also moved out of the e-ink block
+// into the base rules so the dot, the row tag and both Area pickers agree
+// in every mode. Group headers drop the glyph entirely -- the dot is right
+// there. Changed app.js, index.html, styles.css.
+const CACHE_NAME = "tasks-shell-v35";
 const SHELL = [
   "./",
   "./index.html",
