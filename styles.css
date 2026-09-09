@@ -115,7 +115,7 @@
    manual override (tasks-theme-v1 → <html data-theme>). Keep these two
    blocks textually identical. -- */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root:not([data-theme="light"]):not([data-theme="eink"]) {
     --bg: var(--nk-charcoal);
     --surface: var(--nk-surface-charcoal);
     --ink: var(--nk-cream);
@@ -153,6 +153,108 @@
   --area-fitness: var(--nk-teal-charcoal);
   --area-family: var(--nk-family-charcoal);
   --area-personal: var(--nk-personal-charcoal);
+}
+
+/* -- layer 3 · mode resolution: E-INK. Third mode, and the default (see
+   app.js DEFAULT_THEME) now that the daily driver is a Bigme HiBreak Pro
+   B&W — an E Ink Carta panel with 16 grey levels and no hue channel at
+   all.
+
+   Why this is a mode and not a palette tweak. Every colour in this file
+   is desaturated by the panel to a single grey level, and the levels the
+   Signature Lock hues land on were measured, not assumed:
+
+     Area dots     Church 6 · Blibli 6 · Fitness 6 · Family 6 · Personal 6
+                   → all five identical. Spread: ZERO levels.
+     Priority      P1 red 6 · P2 amber 6 · muted ink 6
+                   → the whole priority ladder equals ordinary meta text.
+     Accent        coral 8 vs muted ink 6 — only two levels apart, and
+                   coral is LIGHTER than the text it is meant to outrank.
+     Dividers      border 13 vs cream bg 14 — one level. Every rule in the
+                   app sits one quantisation step from its background.
+
+   So the fix is not "make it grey". Hue is carrying four separate
+   information channels here (Area identity, domain identity, accent-vs-
+   neutral, priority) and the panel has no hue channel to carry them.
+   Each one is re-encoded below onto a channel the panel does have:
+   SHAPE (Area and domain marks), WEIGHT (accent and priority),
+   STROKE WIDTH + VALUE (ring state), and a five-step grey ramp whose
+   entries are ≥3 levels apart so they survive quantisation.
+
+   Primitives are redefined here, which the layer-1 note otherwise
+   forbids. That exception is deliberate and confined to this block:
+   dozens of CONCURSUS rules reference var(--nk-coral) directly rather
+   than through --accent, and on a monochrome panel the honest resolution
+   of "coral" IS black. Overriding the primitive fixes every one of those
+   call sites at once instead of duplicating them all below.
+
+   Contrast gate, re-run for this mode against #FFFFFF:
+     · --ink       #000000  21.0:1   body text
+     · --ink-soft  #4D4D4D   8.7:1   muted text — passes small-text 4.5:1
+     · --border    #8C8C8C   3.5:1   UI/divider — passes the 3:1 bound,
+                   up from the cream border's 1.1:1
+   No text role in this mode sits below 4.5:1, so the weight-carries-coral
+   exception the cream mode needs does not apply here. -- */
+:root[data-theme="eink"] {
+  /* the ramp: levels 0 / 5 / 8 / 12 / 15 of the panel's 16 */
+  --eink-ink: #000000;
+  --eink-strong: #4D4D4D;
+  --eink-mid: #8C8C8C;
+  --eink-faint: #C4C4C4;
+  --eink-paper: #FFFFFF;
+
+  /* primitives, resolved monochrome (see the exception note above) */
+  --nk-cream: #FFFFFF;
+  --nk-charcoal: #000000;
+  --nk-coral: #000000;
+  --nk-teal: #000000;
+  --nk-red: #000000;
+  --nk-burnt-coral: #000000;
+  --nk-tan: #4D4D4D;
+
+  --bg: var(--eink-paper);
+  --surface: var(--eink-paper);
+  --ink: var(--eink-ink);
+  --ink-rgb: 0, 0, 0;
+  --ink-soft: var(--eink-strong);
+  --border: var(--eink-mid);
+  --bg-subtle: #E4E4E4;
+  --label-tan: var(--eink-strong);
+  --accent: var(--eink-ink);
+  --on-accent: var(--eink-paper);
+  --overdue: var(--eink-ink);
+  --amber: var(--eink-strong);
+  --green: var(--eink-ink);
+
+  /* A translucent black scrim dithers the whole page into noise behind
+     the sheet. Wash the background out to near-paper instead; the sheet
+     gets a 2px keyline below to bound it. */
+  --scrim: rgba(255, 255, 255, 0.92);
+
+  /* Identity moves to the shape marks below — every hue slot goes flat
+     black so nothing depends on a distinction the panel cannot draw. */
+  --area-church: var(--eink-ink);
+  --area-blibli: var(--eink-ink);
+  --area-fitness: var(--eink-ink);
+  --area-family: var(--eink-ink);
+  --area-personal: var(--eink-ink);
+  --dm-intake: var(--eink-ink);
+  --dm-synthesis: var(--eink-ink);
+  --dm-exercise: var(--eink-ink);
+  --dm-scripture: var(--eink-ink);
+  --dm-family: var(--eink-ink);
+
+  /* Motion resolves at the token layer, exactly as reduced-motion does.
+     A panel that repaints in ~200-800ms cannot show a 150ms fade: it
+     either drops it or smears it into a partial-refresh ghost. Zeroing
+     the tokens here also collapses every JS-driven animation, because
+     app.js reads these same tokens through motionMs() — playFlip, the
+     completion fade-out delay, and the toast timing all go instant
+     through one mechanism rather than three special cases. */
+  --dur-fast: 0ms;
+  --dur-base: 0ms;
+  --dur-max: 0ms;
+  --dur-fill: 0ms;
 }
 
 /* Reduced motion resolves at the token layer: every inventory entry
@@ -993,12 +1095,12 @@ body.sheet-open { overflow: hidden; }
    state instead of flipping to cream and blending into the page. Same
    two-entry-point duplication as the --bg/--ink dark tokens above. */
 @media (prefers-color-scheme: dark) {
-  html:not([data-theme="light"]) body.concursus-active .tabbar {
+  html:not([data-theme="light"]):not([data-theme="eink"]) body.concursus-active .tabbar {
     background: var(--nk-cream);
     border-color: rgba(44, 44, 44, 0.14);
   }
-  html:not([data-theme="light"]) body.concursus-active .tab-btn { color: var(--nk-charcoal); }
-  html:not([data-theme="light"]) body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
+  html:not([data-theme="light"]):not([data-theme="eink"]) body.concursus-active .tab-btn { color: var(--nk-charcoal); }
+  html:not([data-theme="light"]):not([data-theme="eink"]) body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
 }
 html[data-theme="dark"] body.concursus-active .tabbar {
   background: var(--nk-cream);
@@ -1729,3 +1831,196 @@ body.concursus-active .bottom-scrim {
   font-size: 13px;
   line-height: 1.5;
 }
+
+/* ===================================================================
+   E-INK component layer — the four hue-carried channels, re-encoded.
+
+   The token block above resolves colour. It cannot resolve MEANING: four
+   information channels in this app were riding hue, and a 16-grey panel
+   has no hue to ride. Each is moved to a channel the panel does have.
+
+     Area identity     → SHAPE (five silhouettes)
+     Domain identity   → SHAPE (the same five marks, reused)
+     Ring/arc state    → STROKE WIDTH + VALUE (was opacity 0.28 vs 1)
+     Accent, priority  → WEIGHT + INVERSION (was coral / red / amber)
+
+   Everything here is scoped to :root[data-theme="eink"] and is inert in
+   cream and charcoal mode. Nothing above this line was edited.
+   =================================================================== */
+
+/* --- 1 · AREA IDENTITY -------------------------------------------------
+   Shape is the strongest channel this panel has: it survives quantisation
+   intact, needs no dithering, and stays unambiguous at 10px. Three
+   outlines × two fills covers five Areas with one spare.
+     Church  ● filled circle       Family    ○ hollow circle
+     Blibli  ■ filled square       Personal  □ hollow square
+     Fitness ◆ filled diamond
+   The same five marks are reused for the CONCURSUS domains in §2, so both
+   surfaces speak one vocabulary instead of two. */
+:root[data-theme="eink"] .area-dot {
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  background: var(--ink);
+  border: 2px solid var(--ink);
+}
+:root[data-theme="eink"] .a-church .area-dot { border-radius: 999px; }
+:root[data-theme="eink"] .a-blibli .area-dot { border-radius: 1px; }
+:root[data-theme="eink"] .a-fitness .area-dot { border-radius: 1px; transform: rotate(45deg) scale(0.82); }
+:root[data-theme="eink"] .a-family .area-dot { border-radius: 999px; background: var(--bg); }
+:root[data-theme="eink"] .a-personal .area-dot { border-radius: 1px; background: var(--bg); }
+
+:root[data-theme="eink"] .area-head .area-count { border-color: var(--eink-mid); color: var(--eink-strong); }
+/* the empty-group signal was opacity 0.45, which dithers into noise —
+   same "muted but present" reading, carried by a grey step instead */
+:root[data-theme="eink"] .area-head.zero .area-name,
+:root[data-theme="eink"] .area-head.zero .area-count { opacity: 1; color: var(--eink-mid); }
+
+/* --- 2 · DOMAIN IDENTITY: the same five marks on the ring legend ------ */
+:root[data-theme="eink"] .ring-dot {
+  width: 9px;
+  height: 9px;
+  box-sizing: border-box;
+  opacity: 1;
+  margin-right: 5px;
+  background: var(--ink);
+  border: 2px solid var(--ink);
+}
+:root[data-theme="eink"] .ring-dot.dom-intake { border-radius: 999px; }
+:root[data-theme="eink"] .ring-dot.dom-synthesis { border-radius: 1px; }
+:root[data-theme="eink"] .ring-dot.dom-exercise { border-radius: 1px; transform: rotate(45deg) scale(0.82); }
+:root[data-theme="eink"] .ring-dot.dom-scripture { border-radius: 999px; background: var(--bg); }
+:root[data-theme="eink"] .ring-dot.dom-family { border-radius: 1px; background: var(--bg); }
+:root[data-theme="eink"] .wk-total .ring-dot.dom-synthesis,
+:root[data-theme="eink"] .wk-detail .ring-dot.dom-synthesis { box-shadow: none; }
+
+/* --- 3 · RING STATE ----------------------------------------------------
+   Deliberately NOT dash patterns. Domain identity on the arcs is already
+   carried by fixed position (Intake → Synthesis → Exercise → Scripture →
+   Family, 12 o'clock clockwise) and by the adjacent legend, and the arcs
+   are only ~28px long — five dash patterns would read as mush at that
+   length AND collide with the state signal, since a dashed black arc and
+   a solid black arc would then differ for two unrelated reasons.
+   So the dash channel stays unused and state takes the strongest reading
+   available: an empty slot is a light hairline track, a complete one is a
+   solid black band. Weight and value both change at once. */
+:root[data-theme="eink"] .ring-track { stroke: var(--eink-faint); stroke-width: 7; }
+:root[data-theme="eink"] .ring-seg { stroke: var(--ink); stroke-width: 0; opacity: 1; }
+:root[data-theme="eink"] .ring-seg.done { stroke-width: 7; }
+:root[data-theme="eink"] .ring-seg.just-done { animation: none; }
+:root[data-theme="eink"] .ring-label { color: var(--eink-strong); font-size: 11.5px; }
+:root[data-theme="eink"] .ring-label.done { color: var(--ink); font-weight: 700; }
+:root[data-theme="eink"] .ring-label-state,
+:root[data-theme="eink"] .ring-label:not(.done) .ring-label-state { color: inherit; }
+:root[data-theme="eink"] .mandate-ring { border-width: 2px; }
+/* CARPE keeps its inversion — it is small, earned, and only ever renders
+   at 5/5. The translucent cream track would dither on black, so it takes
+   a solid mid grey instead. */
+:root[data-theme="eink"] .mandate-ring.carpe .ring-track { stroke: #666666; }
+
+/* --- 4 · ACCENT & PRIORITY: weight and inversion, not hue -------------
+   Measured: P1 red, P2 amber and ordinary muted text all land on grey
+   level 6 — the entire priority ladder collapses into the metadata around
+   it. Rebuilt as a three-rung ladder the panel can actually draw:
+   inverted fill > 2px keyline + bold > 1px hairline. */
+:root[data-theme="eink"] .chip { border-color: var(--eink-mid); color: var(--eink-strong); }
+:root[data-theme="eink"] .chip.active { border: 2px solid var(--ink); color: var(--ink); font-weight: 700; }
+:root[data-theme="eink"] .chip .badge { background: var(--eink-faint); color: var(--ink); }
+:root[data-theme="eink"] .due-chip { border-color: var(--eink-mid); color: var(--eink-strong); }
+:root[data-theme="eink"] .due-chip.active { border: 2px solid var(--ink); color: var(--ink); font-weight: 700; }
+:root[data-theme="eink"] .capture-due .due-date-native { border-color: var(--eink-mid); color: var(--eink-strong); }
+
+:root[data-theme="eink"] .tag { border-color: var(--eink-mid); color: var(--eink-strong); }
+:root[data-theme="eink"] .tag.p1 { background: var(--ink); border-color: var(--ink); color: var(--bg); font-weight: 700; }
+:root[data-theme="eink"] .tag.p2 { border: 2px solid var(--ink); color: var(--ink); font-weight: 700; }
+:root[data-theme="eink"] .tag.due-overdue { border: 2px solid var(--ink); color: var(--ink); font-weight: 700; }
+:root[data-theme="eink"] .tag.due-escalated { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+
+/* disabled was opacity 0.4 — a dithered ghost of a control. A flat mid
+   grey fill reads as "not now" without the noise. */
+:root[data-theme="eink"] .capture #new-add:disabled,
+:root[data-theme="eink"] .edit-btn-save:disabled { opacity: 1; background: var(--eink-mid); }
+:root[data-theme="eink"] .check { border-width: 2px; }
+
+/* --- 5 · SURFACES ------------------------------------------------------
+   The nav pill was a solid charcoal bar with 55%-opacity cream labels: on
+   e-ink that is dithered grey on black, the worst combination the panel
+   offers. Inverted to paper + keyline, which also removes the single
+   largest dark fill in the app (dark fills are where ghosting lives). */
+:root[data-theme="eink"] .tabbar { background: var(--bg); border: 2px solid var(--ink); }
+:root[data-theme="eink"] .tab-btn { color: var(--eink-strong); opacity: 1; }
+:root[data-theme="eink"] .tab-btn.active { color: var(--ink); font-weight: 700; border-bottom-color: var(--ink); }
+:root[data-theme="eink"] .edit-sheet { border: 2px solid var(--ink); }
+:root[data-theme="eink"] .edit-sheet-handle { background: var(--eink-mid); }
+:root[data-theme="eink"] .cc-overlay-panel { border: 2px solid var(--ink); }
+:root[data-theme="eink"] .toast {
+  background: var(--bg);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+:root[data-theme="eink"] .banner {
+  background: var(--bg);
+  border-bottom: 2px solid var(--ink);
+  color: var(--ink);
+  font-weight: 500;
+}
+:root[data-theme="eink"] .cc-card,
+:root[data-theme="eink"] .cc-nonneg,
+:root[data-theme="eink"] .wk-detail,
+:root[data-theme="eink"] .cc-manual-input,
+:root[data-theme="eink"] .cc-manual-btn,
+:root[data-theme="eink"] .wk-total { border-color: var(--eink-mid); }
+:root[data-theme="eink"] .cc-nonneg-list,
+:root[data-theme="eink"] .cc-nonneg-item { border-color: var(--eink-faint); }
+:root[data-theme="eink"] .cc-card.done { border: 2px solid var(--ink); }
+:root[data-theme="eink"] .cc-roll-btn,
+:root[data-theme="eink"] .cc-carpe,
+:root[data-theme="eink"] .cc-overlay-confirm { border-width: 2px; font-weight: 700; }
+
+/* --- 6 · WEEKLY REVIEW ARCS: same state grammar as §3 ----------------- */
+:root[data-theme="eink"] .wk-track { stroke: var(--eink-faint); stroke-width: 8; }
+:root[data-theme="eink"] .wk-seg { stroke: var(--ink); stroke-width: 0; opacity: 1; }
+:root[data-theme="eink"] .wk-seg.done { stroke-width: 5.5; }
+/* the highlight lens muted to opacity 0.06 — invisible on this panel.
+   A muted-but-complete arc keeps its width and drops to faint instead. */
+:root[data-theme="eink"] .wk-seg.mute { stroke: var(--eink-faint); }
+:root[data-theme="eink"] .wk-day { color: var(--eink-strong); font-size: 10.5px; }
+:root[data-theme="eink"] .wk-day.today { color: var(--ink); font-weight: 700; }
+:root[data-theme="eink"] .wk-day.selected { background: transparent; outline: 2px solid var(--ink); }
+:root[data-theme="eink"] .wk-day.mute-day { opacity: 1; color: var(--eink-faint); }
+:root[data-theme="eink"] .wk-kicker,
+:root[data-theme="eink"] .wk-family-label { color: var(--eink-strong); }
+:root[data-theme="eink"] .wk-more-summary,
+:root[data-theme="eink"] .wk-total { font-size: 11.5px; color: var(--eink-strong); }
+:root[data-theme="eink"] .wk-total[aria-pressed="true"] { border: 2px solid var(--ink); color: var(--ink); font-weight: 700; }
+:root[data-theme="eink"] .wk-diagnosis { color: var(--ink); }
+:root[data-theme="eink"] .wk-detail-row { color: var(--eink-strong); }
+:root[data-theme="eink"] .wk-detail-row.done { color: var(--ink); font-weight: 700; }
+
+/* --- 7 · TYPOGRAPHY & THE OPACITY SWEEP -------------------------------
+   Two systemic problems. First, `antialiased` thins glyph stems and the
+   panel then dithers the grey fringe, which reads as fuzz rather than as
+   smoothing — subpixel-antialiased keeps the stems solid. Second, this
+   file used fractional opacity as a state channel in about a dozen places
+   (0.85, 0.55, 0.45, 0.4, 0.3, 0.28, 0.06); every one of those becomes a
+   dither pattern. Each is restated as an explicit step on the grey ramp.
+   Small mono labels also go up ~1px: 9.5–11px muted type is the first
+   thing to disappear on a 6.13" panel. */
+:root[data-theme="eink"] body { -webkit-font-smoothing: subpixel-antialiased; }
+:root[data-theme="eink"] .row-title { font-size: 15.5px; }
+:root[data-theme="eink"] .cc-kicker,
+:root[data-theme="eink"] .cc-card-domain,
+:root[data-theme="eink"] .row-eyebrow { font-size: 12px; color: var(--eink-strong); }
+:root[data-theme="eink"] .cc-card-name { font-weight: 700; }
+:root[data-theme="eink"] .cc-card-detail,
+:root[data-theme="eink"] .cc-nonneg-text,
+:root[data-theme="eink"] .cc-ungoverned { opacity: 1; color: var(--eink-strong); }
+:root[data-theme="eink"] .cc-reroll,
+:root[data-theme="eink"] .cc-card-check { color: var(--eink-strong); }
+:root[data-theme="eink"] .cc-card.done .cc-card-check { color: var(--ink); font-weight: 700; }
+:root[data-theme="eink"] .cc-die-icon svg { opacity: 1; }
+:root[data-theme="eink"] .concursus-row.completed .row-title { opacity: 1; color: var(--eink-strong); }
+:root[data-theme="eink"] .concursus-row.completed .row-detail,
+:root[data-theme="eink"] .concursus-row.completed .row-eyebrow { opacity: 1; color: var(--eink-mid); }

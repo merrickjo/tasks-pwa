@@ -850,9 +850,9 @@ const CONCURSUS = (() => {
     btn.className = "mode-toggle";
     btn.id = "concursus-mode-toggle";
     btn.setAttribute("aria-label", "Switch background mode");
-    const eff = (typeof savedTheme === "function" && savedTheme()) ||
-      (typeof systemTheme === "function" ? systemTheme() : "light");
-    btn.innerHTML = eff === "dark" ? MODE_ICON_MOON : MODE_ICON_SUN;
+    const eff = (typeof effectiveTheme === "function" ? effectiveTheme() : null) ||
+      (typeof savedTheme === "function" && savedTheme()) || "eink";
+    btn.innerHTML = typeof modeIcon === "function" ? modeIcon(eff) : MODE_ICON_SUN;
     btn.addEventListener("click", () => {
       if (typeof toggleTheme === "function") toggleTheme();
     });

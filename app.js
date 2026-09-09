@@ -22,10 +22,22 @@ function setConfig(cfg) { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); }
 // declared in the same commit that introduces it (the 2.6 rule bans
 // *silent* key additions, not additions).
 const THEME_KEY = "tasks-theme-v1";
+// 4.0: three modes, not two. The daily driver is now a Bigme HiBreak Pro
+// B&W (E Ink Carta, 16 grey levels), so "eink" is the DEFAULT resolution
+// rather than an opt-in — an unsaved key lands on e-ink regardless of
+// what prefers-color-scheme reports, because the panel constraint is a
+// property of the hardware, not of a user preference the OS knows about.
+// Cream and charcoal stay reachable by cycling the topbar control.
+// tasks-theme-v1 keeps its key: "dark"/"light" values already stored on
+// other devices still parse and still win over the default.
+const THEMES = ["eink", "light", "dark"];
+const DEFAULT_THEME = "eink";
+const THEME_COLOR = { eink: "#FFFFFF", light: "#F5F1E8", dark: "#2C2C2C" };
+function effectiveTheme() { return savedTheme() || DEFAULT_THEME; }
 function savedTheme() {
   try {
     const v = localStorage.getItem(THEME_KEY);
-    return v === "dark" || v === "light" ? v : null;
+    return THEMES.includes(v) ? v : null;
   } catch { return null; }
 }
 function systemTheme() {
@@ -33,17 +45,15 @@ function systemTheme() {
     ? "dark" : "light";
 }
 function applyTheme() {
-  const saved = savedTheme();
-  if (saved) document.documentElement.dataset.theme = saved;
-  else delete document.documentElement.dataset.theme;
-  const eff = saved || systemTheme();
+  const eff = effectiveTheme();
+  document.documentElement.dataset.theme = eff;
   // Keep the iOS status bar on the active surface. These two hexes mirror
   // the token block (--nk-cream / --nk-charcoal) — markup can't read CSS
   // variables, so they're pinned here by reference.
-  const modeColor = eff === "dark" ? "#2C2C2C" : "#F5F1E8";
+  const modeColor = THEME_COLOR[eff];
   ["meta-theme-light", "meta-theme-dark"].forEach((id) => {
     const m = document.getElementById(id);
-    if (m) m.setAttribute("content", saved ? modeColor : (id === "meta-theme-dark" ? "#2C2C2C" : "#F5F1E8"));
+    if (m) m.setAttribute("content", modeColor);
   });
   // 3.8: CONCURSUS grew its own mode-toggle button (same .mode-toggle class,
   // same icons, same tasks-theme-v1 contract) so the control carries over
@@ -52,7 +62,7 @@ function applyTheme() {
   // querying by class and syncing every match is what keeps both buttons
   // (when both happen to be in the DOM) showing the same icon, rather than
   // reaching for the old single #mode-toggle id.
-  const icon = eff === "dark" ? MODE_ICON_MOON : MODE_ICON_SUN;
+  const icon = modeIcon(eff);
   document.querySelectorAll(".mode-toggle").forEach((btn) => { btn.innerHTML = icon; });
 }
 
@@ -65,11 +75,18 @@ function applyTheme() {
 // active), same click/storage contract as before.
 const MODE_ICON_SUN = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><line x1="12" y1="2" x2="12" y2="4"></line><line x1="12" y1="20" x2="12" y2="22"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="2" y1="12" x2="4" y2="12"></line><line x1="20" y1="12" x2="22" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>';
 const MODE_ICON_MOON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
+// 4.0: half-filled disc — the standard contrast glyph. Deliberately not a
+// third crescent or sun variant: at 20px on this panel the three states
+// have to be separable by silhouette alone, same rule the Area marks follow.
+const MODE_ICON_EINK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none"></path></svg>';
+function modeIcon(eff) {
+  return eff === "dark" ? MODE_ICON_MOON : eff === "light" ? MODE_ICON_SUN : MODE_ICON_EINK;
+}
 // Named (not inline) so concursus.js's own toggle button — same class,
 // same icons, same storage key — can wire up to the exact same handler
 // instead of re-implementing the flip logic a second time.
 function toggleTheme() {
-  const next = (savedTheme() || systemTheme()) === "dark" ? "light" : "dark";
+  const next = THEMES[(THEMES.indexOf(effectiveTheme()) + 1) % THEMES.length];
   try { localStorage.setItem(THEME_KEY, next); } catch {}
   applyTheme();
 }

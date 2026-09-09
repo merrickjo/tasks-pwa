@@ -136,7 +136,20 @@
 // the ~200px layout shift can't re-cross a single boundary and flicker)
 // and the full header returns. Collapse state survives render() rebuilds
 // (completion taps mid-scroll). Changed concursus.js, styles.css.
-const CACHE_NAME = "tasks-shell-v29";
+// v29 -> v30: 4.0 — E-INK mode, and it is now the DEFAULT resolution
+// (daily driver moved to a Bigme HiBreak Pro B&W: E Ink Carta, 16 grey
+// levels, no hue channel). Third data-theme value alongside cream and
+// charcoal, plus the component layer that re-encodes the four channels
+// that were riding hue — Area identity and CONCURSUS domain identity onto
+// shape, ring/arc state onto stroke width and value, accent and priority
+// onto weight and inversion — and zeroes the motion tokens, which also
+// collapses every JS-driven animation through motionMs(). Changed
+// styles.css, app.js (tri-state theme cycle + eink default), concursus.js
+// (shared modeIcon). No new files in SHELL, so this bump is the ONLY
+// thing that gets the new default onto the already-installed phone --
+// exactly the v12->v13 lesson above, and the whole point of the change is
+// that the phone opens in e-ink without being told to.
+const CACHE_NAME = "tasks-shell-v30";
 const SHELL = [
   "./",
   "./index.html",
