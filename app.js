@@ -648,6 +648,7 @@ function renderConcursusRow(task) {
   check.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="4,13 9,18 20,6"/></svg>`;
   check.addEventListener("click", (e) => {
     e.stopPropagation();
+    if (wasDrag()) return; // 4.0.2 — the gesture was a scroll, not a tap
     // req 6 -- the only mutation path, shared with the CONCURSUS tab. Its
     // own subscribe notification (wired in initTabRouter) re-renders this
     // surface too, but re-render directly here as well so a same-tab tap
@@ -765,6 +766,7 @@ function renderAreaGroups(list, tasks) {
     g.items.forEach((t) => bodyWrap.appendChild(renderRow(t)));
 
     head.addEventListener("click", () => {
+      if (wasDrag()) return; // 4.0.2 — the gesture was a scroll, not a tap
       const map = getCollapsed();
       map[g.key] = !map[g.key];
       setCollapsed(map);
@@ -776,6 +778,53 @@ function renderAreaGroups(list, tasks) {
     list.appendChild(bodyWrap);
   });
 }
+
+// --- 4.0.2: tap-vs-drag arbitration -------------------------------------
+// Scrolling the Tasks list was intermittently dead on the HiBreak, while
+// the section headers scrolled fine. Cause: .row-body opens the edit
+// sheet on CLICK, and openEditSheet() sets body.sheet-open, which is
+// `overflow: hidden` on <body>. A swipe the browser resolves as a click
+// therefore LOCKS page scroll. Headers were immune because .area-head
+// only toggles a collapse class and .section-label has no listener at
+// all — exactly the reported split.
+//
+// Why it is intermittent, and why it only showed up on this device: a
+// slow e-ink panel invites slow, short swipes, and a gesture that stays
+// inside the browser's tap-slop threshold fires a click. A fast flick
+// clears the threshold and scrolls. On the iPhone the swipes were
+// quicker, so it almost never tripped. In e-ink mode the motion tokens
+// are 0ms, so the sheet appears with no transition and a following swipe
+// hits the backdrop and dismisses it — the net visible effect is
+// "nothing happened" rather than "a sheet opened".
+//
+// The same class of bug sat on the checkboxes, and worse: a slow swipe
+// starting on one would COMPLETE the task. Guarded here too.
+//
+// One delegated, passive, capture-phase tracker rather than per-row
+// listeners — #list is rebuilt on every render and rows are unbounded.
+const TAP_SLOP = 12; // px of travel past which a gesture is a scroll, not a tap
+let gestureOrigin = null;
+let gestureDragged = false;
+function beginGesture(x, y) { gestureOrigin = { x, y }; gestureDragged = false; }
+function moveGesture(x, y) {
+  if (!gestureOrigin || gestureDragged) return;
+  if (Math.hypot(x - gestureOrigin.x, y - gestureOrigin.y) > TAP_SLOP) gestureDragged = true;
+}
+document.addEventListener("touchstart", (e) => {
+  const t = e.touches && e.touches[0];
+  if (t) beginGesture(t.clientX, t.clientY);
+}, { passive: true, capture: true });
+document.addEventListener("touchmove", (e) => {
+  const t = e.touches && e.touches[0];
+  if (t) moveGesture(t.clientX, t.clientY);
+}, { passive: true, capture: true });
+document.addEventListener("mousedown", (e) => beginGesture(e.clientX, e.clientY), { capture: true });
+document.addEventListener("mousemove", (e) => {
+  if (e.buttons) moveGesture(e.clientX, e.clientY);
+}, { passive: true, capture: true });
+// True when the gesture that produced this click travelled far enough to
+// have been a scroll. Read once per click — the flag resets on next press.
+function wasDrag() { return gestureDragged; }
 
 function renderRow(task, opts = {}) {
   const row = document.createElement("div");
@@ -790,12 +839,16 @@ function renderRow(task, opts = {}) {
   // never bubbles to the row body's click-to-edit listener below.
   check.addEventListener("click", (e) => {
     e.stopPropagation();
+    if (wasDrag()) return; // 4.0.2 — the gesture was a scroll, not a tap
     completeTask(task, row, check);
   });
 
   const body = document.createElement("div");
   body.className = "row-body";
-  body.addEventListener("click", () => openEditSheet(task, body));
+  body.addEventListener("click", () => {
+    if (wasDrag()) return; // 4.0.2 — see the tap-vs-drag note above
+    openEditSheet(task, body);
+  });
 
   const title = document.createElement("div");
   title.className = "row-title";
@@ -1315,6 +1368,10 @@ async function boot() {
 let lastRenderedConcursusDate = null;
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible") return;
+  // 4.0.2 safety net: sheet-open is `overflow: hidden` on <body>. If no
+  // sheet is actually open, that class has no business being there —
+  // clear it rather than leave the page silently unscrollable.
+  if (!editingTask) document.body.classList.remove("sheet-open");
   const all = sortTasks(getCache());
 
   const concursusDateStale =

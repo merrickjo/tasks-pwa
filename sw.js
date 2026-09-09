@@ -157,7 +157,14 @@
 // chaining to the document. overflow:visible, same fix and same
 // reasoning as 3.9.1 applied to #concursus-view. styles.css only, so
 // this bump is again the only thing that delivers it.
-const CACHE_NAME = "tasks-shell-v31";
+// v31 -> v32: 4.0.2 -- the real cause of the dead Tasks scroll. .row-body
+// opens the edit sheet on click and openEditSheet() sets body.sheet-open
+// = overflow:hidden, so a swipe resolved as a click locked page scroll.
+// Section headers were immune (.area-head only toggles a class), which is
+// why scrolling worked there and not on rows. Delegated tap-vs-drag guard
+// on rows, both checkboxes and area headers, plus a safety net that clears
+// a stranded sheet-open. app.js only -- bump to deliver it.
+const CACHE_NAME = "tasks-shell-v32";
 const SHELL = [
   "./",
   "./index.html",
