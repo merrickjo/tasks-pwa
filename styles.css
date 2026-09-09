@@ -1072,8 +1072,16 @@ body.sheet-open { overflow: hidden; }
      padding, plus .tab-btn's tallest rendered height: 12px+10px padding +
      2px border-bottom + ~14px text line box (12px font * ~1.15) = 38px.
      8 + 38 = 46px. */
+  /* 4.0.3: these two are now FALLBACKS ONLY — app.js measures the real
+     rendered heights with a ResizeObserver and overwrites both on the
+     root element. The box-model arithmetic below was never verified on a
+     device (its own comment said so) and was wrong: the bar renders 50px
+     in cream and 52px in e-ink, not 46px, leaving ~6px of clearance to
+     the capture bar. Any font substitution, larger line-height or border
+     change eats that and the nav lands on top of the task input. Nothing
+     downstream should trust a hardcoded height again. */
   --nk-tabbar-inset: 12px;
-  --nk-tabbar-h: 46px;
+  --nk-tabbar-h: 52px;
 
   /* Capture bar's own rendered height with FLAT bottom padding (see the
      .capture override below — floating capture no longer needs its own
@@ -1128,11 +1136,20 @@ html[data-theme="dark"] body.concursus-active .tab-btn { color: var(--nk-charcoa
 html[data-theme="dark"] body.concursus-active .bottom-scrim { background: var(--nk-charcoal); }
 /* Nav spec: hide the bar while the keyboard is up so capture rides the
    keyboard alone (app.js toggles this class from a visualViewport listener). */
-body.keyboard-open .tabbar { display: none; }
+/* 4.0.3: !important is load-bearing here, not laziness. showApp() and
+   setActiveTab() set .tabbar's and .bottom-scrim's display as INLINE
+   styles (element.style.display = "flex"/"block"), and an inline
+   declaration outranks every selector. So both of these rules have been
+   dead since they were written — the nav pill never actually hid while
+   the keyboard was up, which is why the task input ended up underneath
+   it. Either these get !important or showApp() stops writing display
+   inline; !important is the smaller, safer change and the comment is
+   here so the next reader knows which it is. */
+body.keyboard-open .tabbar { display: none !important; }
 /* Capture alone goes full-width to bottom:0 with the keyboard up (no side
    insets, unlike the nav pill), so the scrim has nothing to backstop and
    would just be a stray solid block -- hide it alongside the nav. */
-body.keyboard-open .bottom-scrim { display: none; }
+body.keyboard-open .bottom-scrim { display: none !important; }
 
 .tab-btn {
   flex: 1;
@@ -1171,7 +1188,14 @@ body.keyboard-open .bottom-scrim { display: none; }
      above stays correct. */
   padding-bottom: 10px;
 }
-body.keyboard-open .capture { bottom: 0; } /* capture alone follows the keyboard */
+/* 4.0.3: bottom:0 assumed the layout viewport shrinks for the keyboard.
+   Under interactive-widget=resizes-visual it does not, so the bar pinned
+   behind the keyboard. --kb-inset is the measured residual (0 when the
+   viewport meta above is honoured). z-index outranks .tabbar (20) as a
+   belt-and-braces: the nav is display:none here, but if that ever fails
+   the input must still win, because being hidden by the nav is exactly
+   the failure this fixes. */
+body.keyboard-open .capture { bottom: var(--kb-inset, 0px); z-index: 21; }
 
 main {
   /* +16px safety margin over the computed stack height -- the box-model

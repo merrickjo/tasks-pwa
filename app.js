@@ -1479,14 +1479,65 @@ function initTabRouter() {
   setActiveTab(initialTab);
 }
 
-// Nav spec: hide the bar (and let capture ride alone) while the keyboard is
-// up. body.keyboard-open is what styles.css keys off of for both rules.
-if (window.visualViewport) {
-  window.visualViewport.addEventListener("resize", () => {
-    const keyboardUp = window.visualViewport.height < window.innerHeight * 0.75;
-    document.body.classList.toggle("keyboard-open", keyboardUp);
-  });
+// --- 4.0.3: the bottom stack is measured, never guessed --------------------
+// --nk-tabbar-h and --capture-h drove .capture's offset, main's padding and
+// .bottom-scrim's height, and both were box-model arithmetic that the CSS
+// comment itself admitted had never been checked on a device. Measured: the
+// nav renders 50px in cream and 52px in e-ink, not the declared 46px, which
+// left ~6px between the nav and the capture bar. On the HiBreak that gap is
+// gone and the nav pill (z-index 20) paints over the task input (10) — you
+// cannot see what you are typing.
+//
+// Rather than re-guess the constant, observe it. Both elements report their
+// own rendered height back into the custom properties, so the stack is
+// self-correcting across devices, fonts, themes and any future CSS change.
+// No feedback loop: neither variable affects the size of the element it is
+// measured from — they only position siblings.
+function syncStackMetrics() {
+  const root = document.documentElement;
+  const tabbar = document.getElementById("tabbar");
+  const capture = document.querySelector(".capture");
+  // Guard on truthy height: both are display:none at times (pre-boot, and
+  // .tabbar while the keyboard is up). Writing 0 then would collapse the
+  // clearance entirely — keep the last known good value instead.
+  if (tabbar && tabbar.offsetHeight) root.style.setProperty("--nk-tabbar-h", tabbar.offsetHeight + "px");
+  if (capture && capture.offsetHeight) root.style.setProperty("--capture-h", capture.offsetHeight + "px");
 }
+if (window.ResizeObserver) {
+  const ro = new ResizeObserver(syncStackMetrics);
+  [document.getElementById("tabbar"), document.querySelector(".capture")]
+    .forEach((el) => { if (el) ro.observe(el); });
+}
+window.addEventListener("load", syncStackMetrics);
+window.addEventListener("orientationchange", syncStackMetrics);
+syncStackMetrics();
+
+// Keyboard handling. The old test (visualViewport.height < innerHeight*0.75)
+// inferred the keyboard from a ratio; focus is a direct signal and does not
+// depend on the engine resizing anything. The measured inset then positions
+// the bar correctly whether or not interactive-widget=resizes-content (see
+// index.html) is honoured — it resolves to 0 when the layout viewport did
+// shrink, so both paths use one rule.
+function isTypingTarget(el) {
+  if (!el) return false;
+  if (el.tagName === "TEXTAREA") return true;
+  return el.tagName === "INPUT" && el.type !== "date" && el.type !== "checkbox";
+}
+function syncKeyboard() {
+  const vv = window.visualViewport;
+  let inset = 0;
+  if (vv) inset = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+  document.documentElement.style.setProperty("--kb-inset", inset + "px");
+  const typing = isTypingTarget(document.activeElement);
+  document.body.classList.toggle("keyboard-open", typing || inset > 100);
+  if (typing || inset > 0) syncStackMetrics();
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", syncKeyboard);
+  window.visualViewport.addEventListener("scroll", syncKeyboard);
+}
+document.addEventListener("focusin", syncKeyboard);
+document.addEventListener("focusout", () => setTimeout(syncKeyboard, 50));
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));

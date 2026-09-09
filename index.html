@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- interactive-widget=resizes-content: without it Chrome/WebView defaults to
+     resizes-visual, where the soft keyboard shrinks the VISUAL viewport but
+     leaves the layout viewport alone — so `position: fixed; bottom: 0` pins
+     behind the keyboard instead of above it. app.js also measures the
+     residual inset (--kb-inset) for engines that ignore this. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Carpe</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">

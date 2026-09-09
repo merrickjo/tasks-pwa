@@ -164,7 +164,20 @@
 // why scrolling worked there and not on rows. Delegated tap-vs-drag guard
 // on rows, both checkboxes and area headers, plus a safety net that clears
 // a stranded sheet-open. app.js only -- bump to deliver it.
-const CACHE_NAME = "tasks-shell-v32";
+// v32 -> v34: 4.0.3 -- the task input was hidden behind the nav pill while
+// typing. --nk-tabbar-h was a hardcoded 46px that the bar has never matched
+// (50px cream, 52px e-ink), leaving ~6px of clearance for Android font
+// metrics to eat, and .tabbar (z-index 20) then paints over .capture (10).
+// Both stack heights are now measured with a ResizeObserver and written
+// back into the custom properties; the keyboard is detected from focus
+// rather than a viewport ratio, and the bar rides a measured --kb-inset so
+// it clears the keyboard under interactive-widget=resizes-visual too.
+// And the root cause underneath both: showApp() sets .tabbar's display as
+// an INLINE style, which outranks every selector, so the existing
+// `body.keyboard-open .tabbar { display: none }` rule had never once
+// applied -- the nav stayed up over the input every time you typed.
+// !important on that rule and on the matching .bottom-scrim one.
+const CACHE_NAME = "tasks-shell-v34";
 const SHELL = [
   "./",
   "./index.html",
