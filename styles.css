@@ -493,11 +493,29 @@ body {
 .banner.show { display: block; }
 
 /* --- list --- */
+/* 4.0.1 — #list is NOT a scroll container, and never actually was.
+   It carries flex:1, but its parent #app is display:block, so the flex
+   declaration is inert and the element sizes to its full content:
+   measured, scrollHeight === clientHeight (1680 === 1680). The DOCUMENT
+   has always been what scrolls here.
+
+   That left overflow-y:auto + overscroll-behavior:contain declaring a
+   scroll container that can never scroll, with scroll-chaining switched
+   off. Desktop Chromium passes the gesture up to the document anyway;
+   nothing in the spec obliges an engine to, and on the Bigme HiBreak Pro
+   (Android WebView with the vendor's own e-ink scroll handling) it does
+   not — a swipe landing anywhere over the list is swallowed, so Tasks
+   reads as frozen past the third row while CONCURSUS scrolls fine.
+
+   CONCURSUS is the control case: #concursus-view is the same <main>
+   element and works on that device, and the one relevant property it
+   differs by is overflow — 3.9.1 set it to visible for the sticky-header
+   fix. Same treatment here, same reasoning. Nothing is lost, because the
+   container was never scrolling; .topbar keeps sticking to the viewport
+   exactly as it does today. */
 main {
   flex: 1;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
+  overflow: visible;
   padding-bottom: 96px;
 }
 

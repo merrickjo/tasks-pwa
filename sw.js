@@ -149,7 +149,15 @@
 // thing that gets the new default onto the already-installed phone --
 // exactly the v12->v13 lesson above, and the whole point of the change is
 // that the phone opens in e-ink without being told to.
-const CACHE_NAME = "tasks-shell-v30";
+// v30 -> v31: 4.0.1 -- Tasks list unscrollable on the HiBreak past the
+// third row (CONCURSUS unaffected). #list declared overflow-y:auto +
+// overscroll-behavior:contain but sizes to content and never scrolls,
+// so it was a dead scroll container with chaining disabled -- which
+// that device's WebView honours by swallowing the gesture rather than
+// chaining to the document. overflow:visible, same fix and same
+// reasoning as 3.9.1 applied to #concursus-view. styles.css only, so
+// this bump is again the only thing that delivers it.
+const CACHE_NAME = "tasks-shell-v31";
 const SHELL = [
   "./",
   "./index.html",
