@@ -1,0 +1,125 @@
+:root {
+  --bg: #F5F1E8;
+  --panel: #FFFFFF;
+  --ink: #2C2C2C;
+  --ink-soft: #6B6560;
+  --border: #E3DDCF;
+  --accent: #C2593F;
+  --overdue: #B23A2E;
+  --done-bg: #EFEAE0;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1E1E1E;
+    --panel: #2A2A2A;
+    --ink: #F0EDE6;
+    --ink-soft: #A39C90;
+    --border: #3C3C3C;
+    --accent: #E08267;
+    --overdue: #E36656;
+    --done-bg: #232323;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+}
+.setup {
+  max-width: 420px;
+  margin: 15vh auto;
+  padding: 32px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.setup h1 { margin-top: 0; }
+.setup label { display: block; margin: 16px 0 6px; font-size: 13px; color: var(--ink-soft); }
+.setup input {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--bg); color: var(--ink); font-size: 14px;
+}
+.setup button {
+  margin-top: 20px; width: 100%; padding: 10px; border: none; border-radius: 8px;
+  background: var(--accent); color: #fff; font-size: 14px; cursor: pointer;
+}
+
+#app { max-width: 760px; margin: 0 auto; padding: 32px 24px 80px; }
+
+.topbar {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 24px; flex-wrap: wrap; gap: 8px;
+}
+.topbar .date { font-size: 13px; color: var(--ink-soft); }
+.topbar h1 { margin: 2px 0 0; font-size: 26px; }
+.topbar .count { font-size: 15px; color: var(--ink-soft); font-weight: normal; }
+.status {
+  display: none; font-size: 12px; color: var(--overdue);
+  border: 1px solid var(--overdue); border-radius: 6px; padding: 4px 10px;
+}
+.status.show { display: inline-block; }
+
+.capture {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 28px;
+}
+.capture input[type="text"] {
+  flex: 1 1 220px; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--panel); color: var(--ink); font-size: 14px;
+}
+.capture select, .capture input[type="date"] {
+  padding: 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel); color: var(--ink); font-size: 13px;
+}
+.capture button {
+  padding: 10px 18px; border: none; border-radius: 8px;
+  background: var(--accent); color: #fff; font-size: 14px; cursor: pointer;
+}
+.capture button:disabled { opacity: 0.5; cursor: default; }
+
+.section-label {
+  font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--ink-soft); margin: 24px 0 8px;
+}
+.section-label:first-child { margin-top: 0; }
+
+.row {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  margin-bottom: 6px; cursor: pointer;
+}
+.row.done { opacity: 0.55; background: var(--done-bg); }
+.row.overdue-row { border-left: 3px solid var(--overdue); }
+
+.check {
+  flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid var(--ink-soft); background: transparent; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.check svg { width: 13px; height: 13px; stroke: var(--panel); opacity: 0; }
+.check.checked { background: var(--accent); border-color: var(--accent); }
+.check.checked svg { opacity: 1; }
+
+.row-body { flex: 1; min-width: 0; }
+.row-title { font-size: 14px; }
+.row-meta { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+.tag {
+  font-size: 11px; padding: 2px 7px; border-radius: 5px;
+  background: var(--bg); color: var(--ink-soft); border: 1px solid var(--border);
+}
+.tag.due-overdue { color: var(--overdue); border-color: var(--overdue); }
+.tag.p1 { color: var(--overdue); border-color: var(--overdue); }
+
+.empty { color: var(--ink-soft); font-size: 14px; padding: 24px 0; }
+
+.edit-panel {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  padding: 10px 12px; margin: -4px 0 6px; background: var(--panel);
+  border: 1px solid var(--accent); border-radius: 8px;
+}
+.edit-panel input[type="text"] { flex: 1 1 200px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--ink); }
+.edit-panel select, .edit-panel input[type="date"] { padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--ink); font-size: 13px; }
+.edit-panel button { padding: 8px 14px; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; }
+.edit-panel .save { background: var(--accent); color: #fff; }
+.edit-panel .cancel { background: transparent; color: var(--ink-soft); border: 1px solid var(--border); }

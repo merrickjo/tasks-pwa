@@ -184,7 +184,14 @@
 // into the base rules so the dot, the row tag and both Area pickers agree
 // in every mode. Group headers drop the glyph entirely -- the dot is right
 // there. Changed app.js, index.html, styles.css.
-const CACHE_NAME = "tasks-shell-v35";
+// v35 -> v36: added the desktop/web lite view (desktop.html + desktop.css
+// + desktop.js) — a second entry point, tasks-only (no CONCURSUS), laid
+// out for a wide window instead of a phone screen. Shares tasks-cfg-v1
+// and tasks-cache-v2 with the mobile app (same origin, same localStorage)
+// so a browser already connected via index.html needs no separate setup.
+// New files added to SHELL — real bump, not just for these three: any
+// v35-installed PWA would otherwise never learn the new cache name exists.
+const CACHE_NAME = "tasks-shell-v36";
 const SHELL = [
   "./",
   "./index.html",
@@ -192,6 +199,9 @@ const SHELL = [
   "./app.js",
   "./concursus.js",
   "./manifest.json",
+  "./desktop.html",
+  "./desktop.css",
+  "./desktop.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./fonts/playfair-display-latin-500-normal.woff2",

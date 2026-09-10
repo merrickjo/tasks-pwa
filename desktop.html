@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carpe — Desktop</title>
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="desktop.css">
+</head>
+<body>
+
+<div id="setup" class="setup" style="display:none">
+  <h1>Connect</h1>
+  <p>Same Worker URL and app key you used on your phone — see README. If you already connected the mobile app in this browser, this is filled in automatically.</p>
+  <label for="cfg-url">Worker URL</label>
+  <input id="cfg-url" type="text" placeholder="https://tasks-proxy.yourname.workers.dev" autocapitalize="off" autocorrect="off">
+  <label for="cfg-key">App key</label>
+  <input id="cfg-key" type="text" placeholder="shared secret" autocapitalize="off" autocorrect="off">
+  <button id="cfg-save">Connect</button>
+</div>
+
+<div id="app" style="display:none">
+  <header class="topbar">
+    <div>
+      <div class="date" id="today-date"></div>
+      <h1>Carpe <span class="count" id="task-count"></span></h1>
+    </div>
+    <div class="status" id="offline-banner">offline — showing last synced view</div>
+  </header>
+
+  <form class="capture" id="capture-form">
+    <input type="text" id="new-title" placeholder="Add a task" autocomplete="off">
+    <select id="new-area">
+      <option value="">Area</option>
+      <option value="Church">⛪ Church</option>
+      <option value="Blibli">🛒 Blibli</option>
+      <option value="Fitness">💪 Fitness</option>
+      <option value="Family">👨‍👩‍👦 Family</option>
+      <option value="Personal">● Personal</option>
+    </select>
+    <select id="new-priority">
+      <option value="P2 - High">P2</option>
+      <option value="P3 - Medium" selected>P3</option>
+      <option value="P4 - Low">P4</option>
+      <option value="P1 - Critical">P1</option>
+    </select>
+    <input id="new-due" type="date" aria-label="Due date">
+    <button type="submit" id="new-add">Add</button>
+  </form>
+
+  <main id="list"></main>
+</div>
+
+<script src="desktop.js"></script>
+</body>
+</html>
