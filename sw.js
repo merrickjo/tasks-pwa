@@ -191,11 +191,14 @@
 // so a browser already connected via index.html needs no separate setup.
 // New files added to SHELL — real bump, not just for these three: any
 // v35-installed PWA would otherwise never learn the new cache name exists.
-const CACHE_NAME = "tasks-shell-v36";
+// v36 -> v37: bottom nav moved onto the shared nav-kit (nav-kit.css, new
+// file in SHELL). Changed index.html, styles.css. Real bump — new file.
+const CACHE_NAME = "tasks-shell-v37";
 const SHELL = [
   "./",
   "./index.html",
   "./styles.css",
+  "./nav-kit.css",
   "./app.js",
   "./concursus.js",
   "./manifest.json",
