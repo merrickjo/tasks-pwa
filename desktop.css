@@ -23,7 +23,7 @@
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--ck-ui); /* carpe-kit v2.0.0 */
   background: var(--bg);
   color: var(--ink);
 }

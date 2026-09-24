@@ -106,8 +106,8 @@
   --s-5: 24px;
   --s-6: 32px;
 
-  --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+  --font-sans: var(--ck-ui);
+  --font-mono: var(--ck-data);
 }
 
 /* -- layer 3 · mode resolution: CHARCOAL. Two entry points, one value
@@ -308,8 +308,8 @@ body {
 
 .topbar h1 {
   margin: 2px 0 0;
-  font-family: var(--nk-slab); /* brand moment: view title in slab */
-  font-size: 20px;
+  font-family: var(--ck-title); /* brand moment: view title in the shared titles voice */
+  font-size: var(--ck-fs-section);
   font-weight: 600;
   letter-spacing: -0.01em;
 }
@@ -1004,52 +1004,12 @@ body.sheet-open { overflow: hidden; }
 /* (The old ad-hoc dark block that lived here is gone — charcoal mode is
    resolved in the 3.1 token block at the top of this file.) */
 
-/* ===================================================================
-   Signature Lock typography — self-hosted, no runtime font request
-   (Phase 0 req 11). Files under ./fonts/, sourced from the SIL OFL
-   Playfair Display and Apache-2.0 Roboto Slab projects (license text
-   alongside them as LICENSE-*.txt). Weights match what the roadmap's
-   original Google Fonts link specified: Playfair Display 500/700,
-   Roboto Slab 300/400/600. font-display:swap so first paint isn't
-   blocked on font load; --nk-serif/--nk-slab already declare the
-   Lora/Zilla Slab/system-serif fallback chain for the gap before
-   these load.
-   =================================================================== */
-@font-face {
-  font-family: "Playfair Display";
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url("./fonts/playfair-display-latin-500-normal.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Playfair Display";
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url("./fonts/playfair-display-latin-700-normal.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Roboto Slab";
-  font-style: normal;
-  font-weight: 300;
-  font-display: swap;
-  src: url("./fonts/roboto-slab-latin-300-normal.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Roboto Slab";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("./fonts/roboto-slab-latin-400-normal.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Roboto Slab";
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url("./fonts/roboto-slab-latin-600-normal.woff2") format("woff2");
-}
+/* Typography now comes from carpe-kit v2.0.0 (carpe-kit.css, loaded before
+   this file): IBM Plex Sans / Condensed / Mono and Literata titles, all
+   self-hosted in ./fonts, so the "no runtime font requests" rule holds.
+   The Signature Lock font pair (Playfair Display + Roboto Slab) was
+   retired in 4.2.0 for the shared family; the --nk-serif / --nk-slab
+   tokens below keep their roles and now point at the kit's voices. */
 
 /* ===================================================================
    CONCURSUS integration — Phase 1/2 (Signature Lock)
@@ -1086,8 +1046,8 @@ body.sheet-open { overflow: hidden; }
   --dm-scripture: var(--nk-tan);    /* #C9B89A */
   --dm-family: var(--nk-burnt-coral); /* #A9533B — burnt coral */
 
-  --nk-serif: "Playfair Display", "Lora", serif;
-  --nk-slab: "Roboto Slab", "Zilla Slab", serif;
+  --nk-serif: var(--ck-title);   /* was Playfair Display — titles voice */
+  --nk-slab: var(--ck-display);   /* was Roboto Slab — commands voice */
 
   /* Floating nav bar, inset 12px each side. Height = .tabbar's own 4px+4px
      padding, plus .tab-btn's tallest rendered height: 12px+10px padding +
@@ -1119,13 +1079,13 @@ body.sheet-open { overflow: hidden; }
   --capture-h: 110px;
 }
 
-/* --- bottom navigation: nav-kit v1.0.0 (flat floating pill, mode inversion) ---
-   Shape, spacing and behaviour now live in nav-kit.css (shared with NITRO,
+/* --- bottom navigation: carpe-kit v2.0.0 (flat floating pill, mode inversion) ---
+   Shape, type, spacing and behaviour live in carpe-kit.css (shared with NITRO,
    Netflick and Narrowkind; copied in, never edited here). This file only
    sets the look through --gn-* tokens. Tasks keeps its OWN height
    measurement and keyboard handling in app.js (syncStackMetrics and the
    keyboard-open class) because the capture bar stacks on those numbers,
-   so nav-kit.js is deliberately not loaded here. */
+   so carpe-kit.js is deliberately not loaded here. */
 :root {
   --nk-tabbar-inset: var(--gn-inset);
   --gn-max: none;                       /* match the full-width capture bar */
@@ -1135,8 +1095,6 @@ body.sheet-open { overflow: hidden; }
   --gn-active-bg: var(--nk-cream);
   --gn-active-fg: var(--nk-charcoal);
   --gn-active-rule: var(--nk-coral);    /* thin coral rule — the only permitted accent element */
-  --gn-font: var(--nk-slab);
-  --gn-tracking: 0.14em;
   --gn-z: 20;
 }
 /* This inversion only holds while CONCURSUS is actually charcoal, which is
@@ -2065,3 +2023,8 @@ body.concursus-active .bottom-scrim {
 :root[data-theme="eink"] .concursus-row.completed .row-title { opacity: 1; color: var(--eink-strong); }
 :root[data-theme="eink"] .concursus-row.completed .row-detail,
 :root[data-theme="eink"] .concursus-row.completed .row-eyebrow { opacity: 1; color: var(--eink-mid); }
+
+/* carpe-kit v2.0.0: Plex Sans Condensed ships no italic, so an italic line
+   inheriting the commands voice would be a synthesized slant. Italic prose
+   reads in Plex Sans, which has a real italic. */
+.cc-ungoverned { font-family: var(--ck-ui); }

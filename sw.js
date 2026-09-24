@@ -199,12 +199,15 @@
 // the app was opened within ~10 minutes of a push -- and cache-first then
 // serves that stale shell forever under the new name. That is exactly how
 // v37 (nav-kit) could install without the nav-kit markup. No file changes.
-const CACHE_NAME = "tasks-shell-v38";
+// v38 -> v39: carpe-kit v2.0.0 — nav-kit.css replaced by carpe-kit.css,
+// Playfair/Roboto Slab fonts replaced by IBM Plex + Literata (new files in
+// SHELL). Changed index.html, desktop.html, desktop.css, styles.css.
+const CACHE_NAME = "tasks-shell-v39";
 const SHELL = [
   "./",
   "./index.html",
   "./styles.css",
-  "./nav-kit.css",
+  "./carpe-kit.css",
   "./app.js",
   "./concursus.js",
   "./manifest.json",
@@ -213,11 +216,16 @@ const SHELL = [
   "./desktop.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
-  "./fonts/playfair-display-latin-500-normal.woff2",
-  "./fonts/playfair-display-latin-700-normal.woff2",
-  "./fonts/roboto-slab-latin-300-normal.woff2",
-  "./fonts/roboto-slab-latin-400-normal.woff2",
-  "./fonts/roboto-slab-latin-600-normal.woff2",
+  "./fonts/ibm-plex-sans-latin-400-normal.woff2",
+  "./fonts/ibm-plex-sans-latin-400-italic.woff2",
+  "./fonts/ibm-plex-sans-latin-600-normal.woff2",
+  "./fonts/ibm-plex-sans-latin-700-normal.woff2",
+  "./fonts/ibm-plex-sans-condensed-latin-600-normal.woff2",
+  "./fonts/ibm-plex-sans-condensed-latin-700-normal.woff2",
+  "./fonts/ibm-plex-mono-latin-400-normal.woff2",
+  "./fonts/ibm-plex-mono-latin-500-normal.woff2",
+  "./fonts/ibm-plex-mono-latin-700-normal.woff2",
+  "./fonts/literata-latin-600-normal.woff2",
 ];
 
 self.addEventListener("install", (event) => {
