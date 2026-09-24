@@ -193,7 +193,13 @@
 // v35-installed PWA would otherwise never learn the new cache name exists.
 // v36 -> v37: bottom nav moved onto the shared nav-kit (nav-kit.css, new
 // file in SHELL). Changed index.html, styles.css. Real bump — new file.
-const CACHE_NAME = "tasks-shell-v37";
+// v37 -> v38: install now fetches the shell with cache:"reload". GitHub
+// Pages serves max-age=600, so addAll() could fill a NEW cache name with
+// the OLD index.html/styles.css straight from the browser's HTTP cache if
+// the app was opened within ~10 minutes of a push -- and cache-first then
+// serves that stale shell forever under the new name. That is exactly how
+// v37 (nav-kit) could install without the nav-kit markup. No file changes.
+const CACHE_NAME = "tasks-shell-v38";
 const SHELL = [
   "./",
   "./index.html",
@@ -216,7 +222,8 @@ const SHELL = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL))
+    caches.open(CACHE_NAME).then((cache) =>
+      cache.addAll(SHELL.map((u) => new Request(u, { cache: "reload" }))))
   );
   self.skipWaiting();
 });
