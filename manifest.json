@@ -1,6 +1,6 @@
 {
-  "name": "Carpe",
-  "short_name": "Carpe",
+  "name": "Notch",
+  "short_name": "Notch",
   "description": "Personal task manifest, synced with Notion",
   "start_url": "./index.html",
   "scope": "./",

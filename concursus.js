@@ -299,7 +299,7 @@ const CONCURSUS = (() => {
   // ---------- 2.2 — Local mandate-history contract ----------
   // concursus-history-v1: { "<localISO date>": snapshot, ... }. Each snapshot
   // stores roll, the five-domain done map, the resolved FAMILY person, and
-  // carpe. Local-only and offline by design: nothing here ever touches the
+  // notch. Local-only and offline by design: nothing here ever touches the
   // Tasks cache, the Worker, or Notion. History is diagnostic truth for the
   // P2 weekly rings (2.3/2.4) — it is written on every committed state
   // change and when a stale day is archived, and read only through
@@ -327,7 +327,9 @@ const CONCURSUS = (() => {
       if (typeof rec.done[k] !== "boolean") return false;
     }
     if (rec.familyPerson !== null && !["T", "B", "E"].includes(rec.familyPerson)) return false;
-    if (typeof rec.carpe !== "boolean") return false;
+    // Renamed carpe -> notch (app rename). Records written before the rename
+    // carry `carpe`; accept either so stored history stays valid.
+    if (typeof (rec.notch !== undefined ? rec.notch : rec.carpe) !== "boolean") return false;
     return true;
   }
 
@@ -363,7 +365,7 @@ const CONCURSUS = (() => {
       roll: s.roll,
       done: { ...s.done },
       familyPerson: familyPersonFor(s.roll),
-      carpe: DOMAIN_KEYS.every((k) => s.done[k]),
+      notch: DOMAIN_KEYS.every((k) => s.done[k]),
     };
     const cutoff = historyCutoffISO();
     for (const key of Object.keys(history)) {
@@ -391,7 +393,7 @@ const CONCURSUS = (() => {
       d.setDate(d.getDate() - i);
       const date = localISO(d);
       const rec = stored[date];
-      out.push({ date, snapshot: isValidSnapshot(rec) ? { roll: rec.roll, done: { ...rec.done }, familyPerson: rec.familyPerson, carpe: rec.carpe } : null });
+      out.push({ date, snapshot: isValidSnapshot(rec) ? { roll: rec.roll, done: { ...rec.done }, familyPerson: rec.familyPerson, notch: rec.notch !== undefined ? rec.notch : rec.carpe } : null });
     }
     return out;
   }
@@ -450,21 +452,21 @@ const CONCURSUS = (() => {
   function wkStats(days) {
     const domainDone = {};
     WK_DOMAINS.forEach(([k]) => { domainDone[k] = 0; });
-    let carpe = 0;
+    let notch = 0;
     const fam = { T: { assigned: 0, done: 0 }, B: { assigned: 0, done: 0 }, E: { assigned: 0, done: 0 } };
     let governed = 0;
     for (const day of days) {
       const s = day.snapshot;
       if (!s) continue;
       governed += 1;
-      if (s.carpe) carpe += 1;
+      if (s.notch) notch += 1;
       WK_DOMAINS.forEach(([k]) => { if (s.done[k]) domainDone[k] += 1; });
       if (s.familyPerson && fam[s.familyPerson]) {
         fam[s.familyPerson].assigned += 1;
         if (s.done.family) fam[s.familyPerson].done += 1;
       }
     }
-    return { domainDone, carpe, fam, governed, total: days.length };
+    return { domainDone, notch, fam, governed, total: days.length };
   }
 
   // One factual pattern sentence: name the least-fulfilled domain and any
@@ -525,7 +527,7 @@ const CONCURSUS = (() => {
       `${label}${k === "family" && s.familyPerson ? " (" + s.familyPerson + ")" : ""} ${s.done[k] ? "complete" : "incomplete"}`
     ).join(", ");
     const doneCount = WK_DOMAINS.filter(([k]) => s.done[k]).length;
-    return `${dayName}: roll ${s.roll}, ${doneCount} of 5 complete. ${states}.` + (s.carpe ? " Carpe." : "");
+    return `${dayName}: roll ${s.roll}, ${doneCount} of 5 complete. ${states}.` + (s.notch ? " Notch." : "");
   }
 
   function buildWeeklyReview() {
@@ -538,7 +540,7 @@ const CONCURSUS = (() => {
 
     const kicker = el("div", "wk-kicker");
     kicker.appendChild(el("span", "", "WEEKLY MANDATE REVIEW"));
-    kicker.appendChild(el("span", "wk-carpe", `CARPE ${stats.carpe}/${stats.total}`));
+    kicker.appendChild(el("span", "wk-notch", `NOTCH ${stats.notch}/${stats.total}`));
     wrap.appendChild(kicker);
 
     // Seven day rings, oldest first, today last and clearly identified.
@@ -639,7 +641,7 @@ const CONCURSUS = (() => {
         } else {
           const s = day.snapshot;
           panel.appendChild(el("div", "wk-detail-head",
-            `${dateLabel} · Roll ${s.roll}` + (s.carpe ? " · ⚡ CARPE" : "")));
+            `${dateLabel} · Roll ${s.roll}` + (s.notch ? " · ⚡ NOTCH" : "")));
           WK_DOMAINS.forEach(([key, label]) => {
             const rowEl = el("div", "wk-detail-row" + (s.done[key] ? " done" : ""));
             const dot = el("i", `ring-dot dom-${key}` + (s.done[key] ? " done" : ""));
@@ -688,7 +690,7 @@ const CONCURSUS = (() => {
       roll: state.roll,
       done,
       total,
-      carpe: state.roll !== null && done === total,
+      notch: state.roll !== null && done === total,
       // 2.1 — per-domain completion in fixed order, for the Mandate Ring.
       // A copy, never a live reference into module state.
       domains: { ...state.done },
@@ -861,7 +863,7 @@ const CONCURSUS = (() => {
 
   // 3.8 — sticky header (see styles.css .cc-headbar): date, CONCURSUS
   // title, and the mode-toggle, laid out the same way as .topbar-heading
-  // on the Tasks tab. render() appends the ROLL line / CARPE badge /
+  // on the Tasks tab. render() appends the ROLL line / NOTCH badge /
   // weekly review into this same container before it goes into #root —
   // everything in here freezes in place while .cc-body scrolls under it.
   function buildHeadbar() {
@@ -877,7 +879,7 @@ const CONCURSUS = (() => {
   }
 
   // 3.9.2 — scrolled-down collapse: the full header (date, title, ROLL
-  // line, CARPE badge, weekly kicker/totals/diagnosis) is too tall to pin
+  // line, NOTCH badge, weekly kicker/totals/diagnosis) is too tall to pin
   // in its entirety, so past a small scroll threshold it collapses to just
   // the seven rings + the mode toggle in one compact row (CSS does the
   // hiding/re-flowing — see .cc-headbar.collapsed rules). Hysteresis (add
@@ -947,7 +949,7 @@ const CONCURSUS = (() => {
     state = loadState();
     root.innerHTML = "";
 
-    // 3.8: split into a sticky header (date, ROLL n, CARPE badge, the
+    // 3.8: split into a sticky header (date, ROLL n, NOTCH badge, the
     // weekly review + its one-line diagnosis — everything that should
     // freeze in place) and a plain scrollable body (die/roll-stage, or the
     // cards + non-negotiables) — same topbar/#list split Tasks already
@@ -998,7 +1000,7 @@ const CONCURSUS = (() => {
     rollLine.appendChild(reroll);
     headbar.appendChild(rollLine);
 
-    if (s.carpe) headbar.appendChild(el("div", "cc-carpe", "⚡ CARPE POINT EARNED"));
+    if (s.notch) headbar.appendChild(el("div", "cc-notch", "⚡ NOTCH POINT EARNED"));
 
     // 2.3 — Weekly Mandate Review, directly below the roll line (placement
     // revised 16 Jul: read the week's pattern first, then work today's

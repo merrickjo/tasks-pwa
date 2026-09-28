@@ -202,7 +202,14 @@
 // v38 -> v39: carpe-kit v2.0.0 — nav-kit.css replaced by carpe-kit.css,
 // Playfair/Roboto Slab fonts replaced by IBM Plex + Literata (new files in
 // SHELL). Changed index.html, desktop.html, desktop.css, styles.css.
-const CACHE_NAME = "tasks-shell-v39";
+// v39 -> v40: app renamed Carpe -> Notch. Display strings (<title>,
+// manifest name/short_name, desktop view heading), the NOTCH POINT badge
+// and its class/identifier names. Repo path, scope, start_url, Worker
+// ALLOWED_ORIGIN and the shared carpe-kit files are untouched. Stored
+// history records written as `carpe` are still read (concursus.js).
+// Changed index.html, manifest.json, desktop.html, desktop.js, app.js,
+// concursus.js, styles.css.
+const CACHE_NAME = "tasks-shell-v40";
 const SHELL = [
   "./",
   "./index.html",

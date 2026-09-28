@@ -1228,7 +1228,7 @@ body.concursus-active .bottom-scrim {
    it, and CONCURSUS had no equivalent split. Same sticky mechanism here,
    same z-index/background/border-bottom chrome as .topbar, so it reads
    as the same kind of surface. concursus.js appends state.date/CONCURSUS/
-   the mode-toggle/ROLL line/CARPE badge/weekly review into this container;
+   the mode-toggle/ROLL line/NOTCH badge/weekly review into this container;
    only the cards + non-negotiables accordions go in .cc-body below. */
 .cc-headbar {
   position: sticky;
@@ -1267,7 +1267,7 @@ body.concursus-active .bottom-scrim {
 }
 .cc-headbar.collapsed .cc-heading,
 .cc-headbar.collapsed .cc-roll-line,
-.cc-headbar.collapsed .cc-carpe,
+.cc-headbar.collapsed .cc-notch,
 .cc-headbar.collapsed .wk-kicker,
 .cc-headbar.collapsed .wk-more,
 .cc-headbar.collapsed .wk-diagnosis,
@@ -1375,8 +1375,8 @@ body.concursus-active .bottom-scrim {
   text-decoration: underline;
   cursor: pointer;
 }
-/* CARPE badge: flat coral border — no glow, per the Signature Lock */
-.cc-carpe {
+/* NOTCH badge: flat coral border — no glow, per the Signature Lock */
+.cc-notch {
   border: 1px solid var(--nk-coral);
   border-radius: 8px;
   color: var(--nk-coral);
@@ -1514,7 +1514,7 @@ body.concursus-active .bottom-scrim {
   align-items: baseline;
   margin-bottom: 12px;
 }
-.wk-carpe { color: var(--nk-coral); }
+.wk-notch { color: var(--nk-coral); }
 
 .wk-days {
   display: flex;
@@ -1657,7 +1657,7 @@ body.concursus-active .bottom-scrim {
    Phase 3 — Roll-to-Tasks projection, rendered inside the Tasks (cream)
    surface. Uses the Signature Lock coral token as the one accent, same
    restraint rule as everywhere else: outline/text accent, never a filled
-   body except the CARPE state on the strip.
+   body except the NOTCH state on the strip.
    =================================================================== */
 
 /* 2.1 — Today's Mandate Ring: hidden (display:none, no "show" class) until
@@ -1760,31 +1760,31 @@ body.concursus-active .bottom-scrim {
 .ring-label-state { color: var(--nk-coral); }
 .ring-label:not(.done) .ring-label-state { color: var(--ink-soft); }
 
-/* CARPE renders at 5/5 only — mode inversion, same brand moment as the
-   old carpe strip: filled coral, cream ink, segments and labels invert. */
-.ring-carpe {
+/* NOTCH renders at 5/5 only — mode inversion, same brand moment as the
+   old notch strip: filled coral, cream ink, segments and labels invert. */
+.ring-notch {
   margin-top: 4px;
   font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 0.04em;
   color: var(--nk-coral);
 }
-.mandate-ring.carpe {
+.mandate-ring.notch {
   background: var(--nk-coral);
   border-color: var(--nk-coral);
 }
-/* CARPE only exists at 5/5 — every segment is done, so no diagnosis is
+/* NOTCH only exists at 5/5 — every segment is done, so no diagnosis is
    being read off this state; the full-cream inversion (over the domain
    map) is deliberate and keeps Exercise's coral from vanishing into the
    coral fill. */
-.mandate-ring.carpe .ring-seg.done { stroke: var(--nk-cream); }
-.mandate-ring.carpe .ring-track { stroke: rgba(245, 241, 232, 0.35); }
-.mandate-ring.carpe .ring-dot { background: var(--nk-cream); }
-.mandate-ring.carpe .ring-count { fill: var(--nk-cream); }
-.mandate-ring.carpe .ring-label,
-.mandate-ring.carpe .ring-label.done,
-.mandate-ring.carpe .ring-label-state,
-.mandate-ring.carpe .ring-carpe { color: var(--nk-cream); }
+.mandate-ring.notch .ring-seg.done { stroke: var(--nk-cream); }
+.mandate-ring.notch .ring-track { stroke: rgba(245, 241, 232, 0.35); }
+.mandate-ring.notch .ring-dot { background: var(--nk-cream); }
+.mandate-ring.notch .ring-count { fill: var(--nk-cream); }
+.mandate-ring.notch .ring-label,
+.mandate-ring.notch .ring-label.done,
+.mandate-ring.notch .ring-label-state,
+.mandate-ring.notch .ring-notch { color: var(--nk-cream); }
 
 @media (prefers-reduced-motion: reduce) {
   .ring-seg.just-done { animation: none; }
@@ -1911,10 +1911,10 @@ body.concursus-active .bottom-scrim {
 :root[data-theme="eink"] .ring-label-state,
 :root[data-theme="eink"] .ring-label:not(.done) .ring-label-state { color: inherit; }
 :root[data-theme="eink"] .mandate-ring { border-width: 2px; }
-/* CARPE keeps its inversion — it is small, earned, and only ever renders
+/* NOTCH keeps its inversion — it is small, earned, and only ever renders
    at 5/5. The translucent cream track would dither on black, so it takes
    a solid mid grey instead. */
-:root[data-theme="eink"] .mandate-ring.carpe .ring-track { stroke: #666666; }
+:root[data-theme="eink"] .mandate-ring.notch .ring-track { stroke: #666666; }
 
 /* --- 4 · ACCENT & PRIORITY: weight and inversion, not hue -------------
    Measured: P1 red, P2 amber and ordinary muted text all land on grey
@@ -1975,7 +1975,7 @@ body.concursus-active .bottom-scrim {
 :root[data-theme="eink"] .cc-nonneg-item { border-color: var(--eink-faint); }
 :root[data-theme="eink"] .cc-card.done { border: 2px solid var(--ink); }
 :root[data-theme="eink"] .cc-roll-btn,
-:root[data-theme="eink"] .cc-carpe,
+:root[data-theme="eink"] .cc-notch,
 :root[data-theme="eink"] .cc-overlay-confirm { border-width: 2px; font-weight: 700; }
 
 /* --- 6 · WEEKLY REVIEW ARCS: same state grammar as §3 ----------------- */

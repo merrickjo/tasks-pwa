@@ -580,7 +580,7 @@ function renderMandateRing() {
   if (typeof CONCURSUS === "undefined") return;
   const s = CONCURSUS.status();
   if (s.roll === null) {
-    ring.classList.remove("show", "carpe");
+    ring.classList.remove("show", "notch");
     ring.innerHTML = "";
     ring.setAttribute("aria-label", "Open CONCURSUS");
     lastRingDate = null;
@@ -609,23 +609,23 @@ function renderMandateRing() {
     return `<span class="ring-label${done ? " done" : ""}"><i class="ring-dot dom-${key}${done ? " done" : ""}" aria-hidden="true"></i>${label} <span class="ring-label-state">${done ? "✓" : "—"}</span></span>`;
   }).join("");
 
-  // CARPE renders at 5/5 and only at 5/5.
-  const carpeLine = s.carpe ? `<div class="ring-carpe">⚡ CARPE POINT EARNED</div>` : "";
+  // NOTCH renders at 5/5 and only at 5/5.
+  const notchLine = s.notch ? `<div class="ring-notch">⚡ NOTCH POINT EARNED</div>` : "";
 
   ring.innerHTML =
     `<svg class="ring-svg" viewBox="0 0 64 64" aria-hidden="true" focusable="false">${segs}` +
     `<text class="ring-count" x="32" y="32" text-anchor="middle" dominant-baseline="central">${s.done}/${s.total}</text></svg>` +
-    `<div class="ring-body"><div class="ring-legend">${legend}</div>${carpeLine}</div>`;
+    `<div class="ring-body"><div class="ring-legend">${legend}</div>${notchLine}</div>`;
 
   // The container is a single button; its accessible name carries every
   // segment's state directly, without relying on color or glyphs.
   const states = RING_DOMAINS.map(([key, label]) => `${label} ${s.domains[key] ? "complete" : "incomplete"}`).join(", ");
   ring.setAttribute("aria-label",
     `Mandate ring: ${s.done} of ${s.total} complete. ${states}.` +
-    (s.carpe ? " Carpe point earned." : "") + " Opens CONCURSUS.");
+    (s.notch ? " Notch point earned." : "") + " Opens CONCURSUS.");
 
   ring.classList.add("show");
-  ring.classList.toggle("carpe", s.carpe);
+  ring.classList.toggle("notch", s.notch);
 }
 
 // Fixed order (req 5): CONCURSUS.getProjectedTasks() already returns

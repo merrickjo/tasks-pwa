@@ -1,4 +1,4 @@
-// Carpe — desktop/web lite view
+// Notch — desktop/web lite view
 // Tasks only, no CONCURSUS. Shares localStorage keys with the mobile app
 // (app.js) on purpose: same origin means the same browser that's already
 // connected on the phone-installed PWA, or on index.html in this same
