@@ -212,7 +212,9 @@
 // v40 -> v41: CONCURSUS Intake/Exercise revised from the Google Health
 // trend snapshot (Early Close intake, Step 10K exercise, explicit 20-slot
 // tables). concursus.js changed, so the shell must re-install.
-const CACHE_NAME = "tasks-shell-v41";
+// v41 -> v42: HZ2 range 115–135 + talk test; Water non-negotiable
+// (MCU 2024 vs 2025 review). concursus.js changed.
+const CACHE_NAME = "tasks-shell-v42";
 const SHELL = [
   "./",
   "./index.html",

@@ -62,7 +62,7 @@ const CONCURSUS = (() => {
   // high-intensity dose, so a NEAT mode joins HZ2 and strength. HZ2 gets a
   // hard HR cap because badminton kept being mistaken for it.
   const EXERCISE = [
-    { name: "Low Heart Zone 2", detail: "40 min continuous, HR held at 110–129 bpm (60–70% of tested max 184). Incline walk, bike or easy jog. Badminton never counts. Badminton-day floor: 20 min easy." },
+    { name: "Low Heart Zone 2", detail: "40 min continuous, HR held at 115–135 bpm and you can still speak full sentences (talk test wins over the number). Incline walk, bike or easy jog. Badminton never counts. Badminton-day floor: 20 min easy." },
     { name: "Novaxa Session — 30 min", detail: "Generate today's session from Novaxa's recovery logic and complete 30 minutes. Day after badminton: cap at 3 rounds, RPE ≤7. Badminton-day floor: core finisher only.", href: NOVAXA_URL },
     { name: "Step 10K", detail: "10,000 steps, including a 10–15 min walk after each of the two biggest meals. Floor: 7,000 + one post-meal walk." },
   ];
@@ -134,6 +134,7 @@ const CONCURSUS = (() => {
     ["Rice", "Reduce rice portions by 30–40%; replace with protein or vegetables."],
     ["Sleep", "Stop eating three hours before sleep. Supports eGFR 88.3."],
     ["Coffee", "Default coffee: black or a splash of milk. Sweetened maximum 1–2 times per week."],
+    ["Water", "~2.5 L water/day, +0.75–1 L per hour of badminton. Don't hold urine. MCU Dec 2025 advice; eGFR 98.4 → 88.3."],
     ["Steps", "7,000 step floor every day, independent of training. Median was 3.6k (Google Health, 2025–26)."],
     ["Badminton", "Badminton never replaces the rolled Exercise — it shrinks it to its floor. 30–40g protein within 2h after, electrolytes, no 'earned it' dessert."],
   ];
