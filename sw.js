@@ -209,7 +209,10 @@
 // history records written as `carpe` are still read (concursus.js).
 // Changed index.html, manifest.json, desktop.html, desktop.js, app.js,
 // concursus.js, styles.css.
-const CACHE_NAME = "tasks-shell-v40";
+// v40 -> v41: CONCURSUS Intake/Exercise revised from the Google Health
+// trend snapshot (Early Close intake, Step 10K exercise, explicit 20-slot
+// tables). concursus.js changed, so the shell must re-install.
+const CACHE_NAME = "tasks-shell-v41";
 const SHELL = [
   "./",
   "./index.html",

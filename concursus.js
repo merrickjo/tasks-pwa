@@ -44,6 +44,10 @@ const CONCURSUS = (() => {
       name: "IF + Protein Front-Load",
       detail: "Intermittent fasting (16:8 minimum). Break the fast with 30g+ protein and fiber first. MPS threshold (Lyon) + glucose sequencing (Inchauspé).",
     },
+    {
+      name: "Early Close",
+      detail: "Last bite by 19:30, kitchen closed. Screens down 22:30, lights out 23:00. Tracker (Sep 2026): 0 of 36 nights ≥7h, onset ~midnight — early eating window + earlier sleep for insulin sensitivity.",
+    },
   ];
 
   const SYNTHESIS = [
@@ -53,10 +57,23 @@ const CONCURSUS = (() => {
     { name: "Knowledge Podcast", detail: "One episode from the Snipd queue. Snip as you listen — no passive play." },
   ];
 
+  // Exercise revised 29 Sep 2026 (Health Log › Google Health Trend Snapshot):
+  // median 3.6k steps/day, badminton (avg HR 144–153) now supplies the
+  // high-intensity dose, so a NEAT mode joins HZ2 and strength. HZ2 gets a
+  // hard HR cap because badminton kept being mistaken for it.
   const EXERCISE = [
-    { name: "Low Heart Zone 2", detail: "Treadmill — 30–60 minutes at conversational pace, approximately 60–70% max HR." },
-    { name: "Novaxa Session — 30 min", detail: "Generate today's session from Novaxa's recovery logic and complete 30 minutes.", href: NOVAXA_URL },
+    { name: "Low Heart Zone 2", detail: "40 min continuous, HR held at 110–129 bpm (60–70% of tested max 184). Incline walk, bike or easy jog. Badminton never counts. Badminton-day floor: 20 min easy." },
+    { name: "Novaxa Session — 30 min", detail: "Generate today's session from Novaxa's recovery logic and complete 30 minutes. Day after badminton: cap at 3 rounds, RPE ≤7. Badminton-day floor: core finisher only.", href: NOVAXA_URL },
+    { name: "Step 10K", detail: "10,000 steps, including a 10–15 min walk after each of the two biggest meals. Floor: 7,000 + one post-meal walk." },
   ];
+
+  // Explicit 20-slot lookups (29 Sep 2026) — same roll→protocol mapping as
+  // the Personal Formation Architecture reference table in the vault.
+  // Intake: NoSugar 1,4,10,13,16 · NoFried 2,5,8,14,17 · IF 3,6,9,15,18 ·
+  // EarlyClose 7,11,12,19,20 (5/5/5/5). Exercise: HZ2 1,3,7,9,11,15,17 ·
+  // Strength 2,4,8,12,16,18,19 · Step 5,6,10,13,14,20 (7/7/6).
+  const INTAKE_TABLE = [0, 1, 2, 0, 1, 2, 3, 1, 2, 0, 3, 3, 0, 1, 2, 0, 1, 2, 3, 3];
+  const EXERCISE_TABLE = [0, 1, 0, 1, 2, 2, 0, 1, 0, 2, 0, 1, 2, 2, 0, 1, 0, 1, 1, 2];
 
   // DM3-01 — FAMILY domain (Domain model v3). One rolled, fully-present
   // 20-minute block on one named person: T (as husband), B (as dad, age 4,
@@ -117,6 +134,8 @@ const CONCURSUS = (() => {
     ["Rice", "Reduce rice portions by 30–40%; replace with protein or vegetables."],
     ["Sleep", "Stop eating three hours before sleep. Supports eGFR 88.3."],
     ["Coffee", "Default coffee: black or a splash of milk. Sweetened maximum 1–2 times per week."],
+    ["Steps", "7,000 step floor every day, independent of training. Median was 3.6k (Google Health, 2025–26)."],
+    ["Badminton", "Badminton never replaces the rolled Exercise — it shrinks it to its floor. 30–40g protein within 2h after, electrolytes, no 'earned it' dessert."],
   ];
 
   // DM3-01 — FAMILY invariants. Rendered as a second, separate accordion
@@ -151,8 +170,8 @@ const CONCURSUS = (() => {
 
   // ---------- Mandate derivation (Phase 1 req 10 / DM3-01) ----------
   // Deterministic and total: every integer 1–20 resolves all five domains.
-  // Distribution across rolls 1–20: synthesis 5/5/5/5 · exercise 10/10 ·
-  // intake 7/7/6 · scripture: odd rolls OT, even rolls NT, triads cycled —
+  // Distribution across rolls 1–20: synthesis 5/5/5/5 · exercise 7/7/6 ·
+  // intake 5/5/5/5 (explicit tables) · scripture: odd rolls OT, even rolls NT, triads cycled —
   // every triad appears at least once, eight appear twice · family T 8/B 6/E 6
   // (explicit FAMILY_TABLE lookup, uneven counts). Tune by editing the
   // arrays/table, not the math.
@@ -165,9 +184,9 @@ const CONCURSUS = (() => {
     const triads = testament === "OT" ? OT_TRIADS : NT_TRIADS;
     const triad = triads[Math.floor(i / 2) % 6];
     return {
-      intake: INTAKE[i % 3],
+      intake: INTAKE[INTAKE_TABLE[i]],
       synthesis: SYNTHESIS[i % 4],
-      exercise: EXERCISE[i % 2],
+      exercise: EXERCISE[EXERCISE_TABLE[i]],
       scripture: { name: testament + " · " + triad.name, detail: triad.books },
       family: FAMILY_TABLE[i],
     };
