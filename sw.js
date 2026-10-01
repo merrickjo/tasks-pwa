@@ -218,7 +218,8 @@
 // apple-touch-icon added). Icons are shell files, so re-install.
 // v43 -> v44: 4.3 AGENDA · TODAY (calendar mirror) in app.js/styles.css.
 // v44 -> v45: 4.3.1 agenda capped at 3 upcoming rows + show-all toggle.
-const CACHE_NAME = "tasks-shell-v45";
+// v45 -> v46: 4.3.2 app checks for a new shell on every resume.
+const CACHE_NAME = "tasks-shell-v46";
 const SHELL = [
   "./",
   "./index.html",

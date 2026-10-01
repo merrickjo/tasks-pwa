@@ -1688,6 +1688,14 @@ document.addEventListener("focusout", () => setTimeout(syncKeyboard, 50));
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
+  // 4.3.2: browsers only re-check sw.js on a real navigation. A home-screen
+  // PWA that's merely resumed (Android/HiBreak, iOS) never navigates, so it
+  // could sit on an old shell for days. Ask for an update check on every
+  // resume; a new worker then takes over and controllerchange reloads.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {});
+  });
   // 3.9: register() alone leaves a real gap — sw.js's skipWaiting()/
   // clients.claim() make a new worker install and take control quickly,
   // but the PAGE ALREADY OPEN when that happens keeps running on
