@@ -2028,3 +2028,25 @@ body.concursus-active .bottom-scrim {
    inheriting the commands voice would be a synthesized slant. Italic prose
    reads in Plex Sans, which has a real italic. */
 .cc-ungoverned { font-family: var(--ck-ui); }
+
+/* 4.3 — AGENDA · TODAY (calendar mirror, read-only). Mono time column,
+   plain title; past meetings recede, the current one carries the accent
+   rule. No checkbox: meetings aren't tasks. */
+.agenda-group-label { display: flex; justify-content: space-between; gap: var(--s-3); }
+.agenda-stale { text-transform: none; letter-spacing: 0; opacity: 0.8; }
+.agenda-row { align-items: baseline; }
+.agenda-time {
+  flex: none;
+  width: 44px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  display: flex;
+  flex-direction: column;
+}
+.agenda-time span { font-size: 11px; opacity: 0.7; }
+.agenda-row.past .row-title,
+.agenda-row.past .agenda-time { opacity: 0.45; }
+.agenda-row.now { box-shadow: inset 3px 0 0 var(--accent); }
+.agenda-row.now .agenda-time { color: var(--ink); font-weight: 500; }

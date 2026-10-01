@@ -515,6 +515,10 @@ function render(allTasks) {
   // which is also why this must run before the empty-view early return
   // below -- an empty Notion view is not the same thing as nothing to show.
   renderConcursusGroup(list);
+  // 4.3: today's work meetings (Outlook → notch-cal → Worker). Same rule
+  // as CONCURSUS: independent of the Tasks view, renders above it, no-op
+  // when there's nothing today.
+  renderAgendaGroup(list);
 
   if (!tasks.length) {
     const empty = document.createElement("div");
@@ -528,6 +532,96 @@ function render(allTasks) {
     renderAreaGroups(list, tasks);
   } else {
     renderDateGroups(list, tasks);
+  }
+}
+
+// --- 4.3: AGENDA · TODAY — calendar mirror ---
+// Read-only. notch-cal on the Mac pushes Outlook titles + times to the
+// Worker (/api/events); the PWA fetches today's slice, caches it per day
+// so it survives offline launches, and never writes back. Tapping a row
+// does nothing — the calendar of record stays in Outlook.
+const AGENDA_KEY = "agenda-cache-v1";
+const AGENDA_STALE_MS = 3 * 60 * 60 * 1000; // older than this → show "synced HH:MM"
+const AGENDA_REFETCH_MS = 10 * 60 * 1000;   // resume refetch throttle
+let agendaFetchedAt = 0;
+
+function getAgenda() {
+  try {
+    const a = JSON.parse(localStorage.getItem(AGENDA_KEY));
+    if (a && a.date === todayISO() && Array.isArray(a.events)) return a;
+  } catch {}
+  return null; // yesterday's cache is never shown as today
+}
+function setAgenda(a) {
+  try { localStorage.setItem(AGENDA_KEY, JSON.stringify(a)); } catch {}
+}
+
+function hhmm(iso) {
+  const d = new Date(iso);
+  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}
+
+function renderAgendaGroup(list) {
+  const agenda = getAgenda();
+  if (!agenda || !agenda.events.length) return;
+  const now = Date.now();
+
+  const h = document.createElement("div");
+  h.className = "section-label agenda-group-label";
+  h.textContent = `AGENDA · TODAY · ${agenda.events.length}`;
+  if (agenda.syncedAt && now - Date.parse(agenda.syncedAt) > AGENDA_STALE_MS) {
+    const s = document.createElement("span");
+    s.className = "agenda-stale";
+    s.textContent = "synced " + hhmm(agenda.syncedAt);
+    h.appendChild(s);
+  }
+  list.appendChild(h);
+
+  agenda.events.forEach((e) => {
+    const start = Date.parse(e.start);
+    const end = Date.parse(e.end);
+    const row = document.createElement("div");
+    row.className = "row agenda-row";
+    if (!e.allDay && end <= now) row.classList.add("past");
+    if (!e.allDay && start <= now && now < end) row.classList.add("now");
+
+    const time = document.createElement("div");
+    time.className = "agenda-time";
+    time.textContent = e.allDay ? "all day" : hhmm(e.start);
+    if (!e.allDay) {
+      const until = document.createElement("span");
+      until.textContent = hhmm(e.end);
+      time.appendChild(until);
+    }
+
+    const body = document.createElement("div");
+    body.className = "row-body";
+    body.style.cursor = "default";
+    const title = document.createElement("div");
+    title.className = "row-title";
+    title.textContent = e.title;
+    body.appendChild(title);
+
+    row.appendChild(time);
+    row.appendChild(body);
+    list.appendChild(row);
+  });
+}
+
+// Fire-and-forget: the agenda never blocks or fails the Tasks load. On
+// success it re-renders from the task cache only when something changed.
+async function refreshAgenda() {
+  agendaFetchedAt = Date.now();
+  try {
+    const date = todayISO();
+    const fresh = await apiFetch(`/api/events?date=${date}`);
+    const before = JSON.stringify(getAgenda());
+    const next = { date, syncedAt: fresh.syncedAt, events: fresh.events || [] };
+    if (JSON.stringify(next) === before) return;
+    setAgenda(next);
+    if (hasCacheMetadata()) render(sortTasks(getCache()));
+  } catch {
+    // offline or Worker unreachable — keep whatever today's cache holds
   }
 }
 
@@ -1334,6 +1428,8 @@ async function boot() {
   // that's a legitimate "No open tasks", not the absence of a cache.
   if (hasCacheMetadata()) render(cached);
 
+  refreshAgenda(); // 4.3 — parallel, never awaited
+
   try {
     const { tasks } = await apiFetch("/api/tasks");
     document.getElementById("offline-banner").classList.remove("show");
@@ -1356,6 +1452,7 @@ async function boot() {
       const list = document.getElementById("list");
       list.innerHTML = "";
       renderConcursusGroup(list);
+      renderAgendaGroup(list);
       const err = document.createElement("div");
       err.className = "empty";
       err.textContent = "Can't reach the server. Check your connection or Worker URL.";
@@ -1383,6 +1480,8 @@ document.addEventListener("visibilitychange", () => {
   // sheet is actually open, that class has no business being there —
   // clear it rather than leave the page silently unscrollable.
   if (!editingTask) document.body.classList.remove("sheet-open");
+  // 4.3 — meetings move during the day; refresh on resume, throttled.
+  if (getConfig() && Date.now() - agendaFetchedAt > AGENDA_REFETCH_MS) refreshAgenda();
   const all = sortTasks(getCache());
 
   const concursusDateStale =

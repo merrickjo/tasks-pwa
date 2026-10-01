@@ -216,7 +216,8 @@
 // (MCU 2024 vs 2025 review). concursus.js changed.
 // v42 -> v43: new N-system app icon (icons/*.png replaced, PNG
 // apple-touch-icon added). Icons are shell files, so re-install.
-const CACHE_NAME = "tasks-shell-v43";
+// v43 -> v44: 4.3 AGENDA · TODAY (calendar mirror) in app.js/styles.css.
+const CACHE_NAME = "tasks-shell-v44";
 const SHELL = [
   "./",
   "./index.html",

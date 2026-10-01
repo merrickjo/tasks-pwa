@@ -16,3 +16,20 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_status_due ON tasks(status, due);
 CREATE INDEX IF NOT EXISTS idx_tasks_completed ON tasks(status, completed_at);
+
+-- calendar mirror (1 Oct 2026) — work meetings pushed from the Mac by
+-- notch-cal (macOS Calendar → Worker). Titles + times only, by design:
+-- no attendees, no body, no location. Each push replaces a date window.
+CREATE TABLE IF NOT EXISTS events (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  date      TEXT NOT NULL,                  -- YYYY-MM-DD, Jakarta-local start day
+  start     TEXT NOT NULL,                  -- ISO datetime with offset (all-day: YYYY-MM-DD)
+  end       TEXT NOT NULL,
+  all_day   INTEGER NOT NULL DEFAULT 0,
+  title     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_events_date ON events(date, start);
+CREATE TABLE IF NOT EXISTS meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
