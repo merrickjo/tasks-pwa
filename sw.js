@@ -220,7 +220,8 @@
 // v44 -> v45: 4.3.1 agenda capped at 3 upcoming rows + show-all toggle.
 // v45 -> v46: 4.3.2 app checks for a new shell on every resume.
 // v46 -> v47: 4.3.3 build stamp, agenda load errors shown, desktop agenda.
-const CACHE_NAME = "tasks-shell-v47";
+// v47 -> v48: 4.3.4 agenda fetched from /api/agenda (blockers eat /api/events).
+const CACHE_NAME = "tasks-shell-v48";
 const SHELL = [
   "./",
   "./index.html",

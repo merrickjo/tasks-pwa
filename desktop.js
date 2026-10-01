@@ -378,7 +378,7 @@ async function refreshAgenda() {
   renderAgenda(); // cached first
   try {
     const date = todayISO();
-    const fresh = await apiFetch(`/api/events?date=${date}`);
+    const fresh = await apiFetch(`/api/agenda?date=${date}`);
     localStorage.setItem(AGENDA_KEY, JSON.stringify({ date, syncedAt: fresh.syncedAt, events: fresh.events || [] }));
   } catch {}
   renderAgenda();

@@ -138,6 +138,10 @@ async function updateTask(env, id, input) {
 }
 
 // --- calendar mirror (v9, 1 Oct 2026) ---
+// v9.1: served at /api/agenda too. Ad/tracker blockers (Brave Shields,
+// EasyPrivacy lists) block any URL ending in /api/events as analytics, so
+// the PWA got "Failed to fetch". /api/events stays as an alias for the
+// Mac exporter, which runs under curl with no blocker.
 // notch-cal on the Mac PUTs a window of days; the PWA GETs one day.
 // Titles + times only — the exporter never sends anything else and the
 // Worker would drop it anyway.
@@ -240,12 +244,12 @@ export async function handle(request, env) {
       if (!task) return json({ error: "task not found", field: "id" }, 404, env);
       return json(task, 200, env);
     }
-    if (parts[0] === "api" && parts[1] === "events" && !parts[2] && request.method === "GET") {
+    if (parts[0] === "api" && (parts[1] === "agenda" || parts[1] === "events") && !parts[2] && request.method === "GET") {
       const date = url.searchParams.get("date") || jakartaISO();
       if (!DATE_RE.test(date)) return json({ error: "date must be YYYY-MM-DD", field: "date" }, 400, env);
       return json(await listEvents(env, date), 200, env);
     }
-    if (parts[0] === "api" && parts[1] === "events" && !parts[2] && request.method === "PUT") {
+    if (parts[0] === "api" && (parts[1] === "agenda" || parts[1] === "events") && !parts[2] && request.method === "PUT") {
       const input = await readJson(request);
       if (input === undefined) return json({ error: "body must be valid JSON", field: "body" }, 400, env);
       let events;
