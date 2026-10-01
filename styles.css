@@ -2050,3 +2050,19 @@ body.concursus-active .bottom-scrim {
 .agenda-row.past .agenda-time { opacity: 0.45; }
 .agenda-row.now { box-shadow: inset 3px 0 0 var(--accent); }
 .agenda-row.now .agenda-time { color: var(--ink); font-weight: 500; }
+
+/* 4.3.1 — the single show-all / show-less toggle under the agenda. */
+.agenda-more {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--s-3) var(--s-5) var(--s-3) calc(var(--s-5) + 44px + var(--s-3));
+  background: var(--surface);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+  cursor: pointer;
+}

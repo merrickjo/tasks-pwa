@@ -37,7 +37,7 @@ on run argv
 					set oneOffs to {}
 				end try
 				repeat with e in oneOffs
-					set end of items_ to {subject of e, start time of e, end time of e, all day flag of e}
+					set end of items_ to {subject of e, start time of e, end time of e, all day flag of e, (free busy status of e) as string}
 				end repeat
 				-- 2. recurring series → one probe per day at the series' time of day
 				try
@@ -51,7 +51,7 @@ on run argv
 					repeat with k from 0 to (nDays - 1)
 						try
 							set o to get occurrence of m at (d0 + k * days + tod)
-							set end of items_ to {subject of o, start time of o, end time of o, all day flag of o}
+							set end of items_ to {subject of o, start time of o, end time of o, all day flag of o, (free busy status of o) as string}
 						end try
 					end repeat
 				end repeat
@@ -67,7 +67,9 @@ on run argv
 		set s to item 2 of it_
 		set e to item 3 of it_
 		set allDay to item 4 of it_
-		if s ≥ d0 and s < dEnd and not my isCanceled(t) then
+		-- "free" = FYI broadcasts and calendars shared for info; they never block time
+		set fb to item 5 of it_
+		if s ≥ d0 and s < dEnd and not my isCanceled(t) and fb is not "free" then
 			set key_ to t & "|" & (s as string)
 			if seen does not contain key_ then
 				set end of seen to key_

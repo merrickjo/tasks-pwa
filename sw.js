@@ -217,7 +217,8 @@
 // v42 -> v43: new N-system app icon (icons/*.png replaced, PNG
 // apple-touch-icon added). Icons are shell files, so re-install.
 // v43 -> v44: 4.3 AGENDA · TODAY (calendar mirror) in app.js/styles.css.
-const CACHE_NAME = "tasks-shell-v44";
+// v44 -> v45: 4.3.1 agenda capped at 3 upcoming rows + show-all toggle.
+const CACHE_NAME = "tasks-shell-v45";
 const SHELL = [
   "./",
   "./index.html",

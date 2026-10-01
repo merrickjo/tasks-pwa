@@ -561,14 +561,59 @@ function hhmm(iso) {
   return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
 }
 
+// 4.3.1 — scroll budget. The agenda is a glance, not a list: by default it
+// shows only what's still ahead, capped at AGENDA_CAP rows, so an invite
+// storm can never push the task list off-screen. Finished meetings drop
+// out; a single toggle row reveals the full day. The expanded state is
+// session-only and resets on reload, so the default view is always short.
+const AGENDA_CAP = 3;
+let agendaExpanded = false;
+
+function renderAgendaRow(list, e, now) {
+  const start = Date.parse(e.start);
+  const end = Date.parse(e.end);
+  const row = document.createElement("div");
+  row.className = "row agenda-row";
+  if (!e.allDay && end <= now) row.classList.add("past");
+  if (!e.allDay && start <= now && now < end) row.classList.add("now");
+
+  const time = document.createElement("div");
+  time.className = "agenda-time";
+  time.textContent = e.allDay ? "all day" : hhmm(e.start);
+  if (!e.allDay) {
+    const until = document.createElement("span");
+    until.textContent = hhmm(e.end);
+    time.appendChild(until);
+  }
+
+  const body = document.createElement("div");
+  body.className = "row-body";
+  body.style.cursor = "default";
+  const title = document.createElement("div");
+  title.className = "row-title";
+  title.textContent = e.title;
+  body.appendChild(title);
+
+  row.appendChild(time);
+  row.appendChild(body);
+  list.appendChild(row);
+}
+
 function renderAgendaGroup(list) {
   const agenda = getAgenda();
   if (!agenda || !agenda.events.length) return;
   const now = Date.now();
+  const all = agenda.events;
+  const ahead = all.filter((e) => e.allDay || Date.parse(e.end) > now);
+  const doneCount = all.length - ahead.length;
 
   const h = document.createElement("div");
   h.className = "section-label agenda-group-label";
-  h.textContent = `AGENDA · TODAY · ${agenda.events.length}`;
+  const label = document.createElement("span");
+  label.textContent = ahead.length
+    ? `AGENDA · ${ahead.length} LEFT TODAY`
+    : `AGENDA · ALL ${all.length} DONE`;
+  h.appendChild(label);
   if (agenda.syncedAt && now - Date.parse(agenda.syncedAt) > AGENDA_STALE_MS) {
     const s = document.createElement("span");
     s.className = "agenda-stale";
@@ -577,35 +622,27 @@ function renderAgendaGroup(list) {
   }
   list.appendChild(h);
 
-  agenda.events.forEach((e) => {
-    const start = Date.parse(e.start);
-    const end = Date.parse(e.end);
-    const row = document.createElement("div");
-    row.className = "row agenda-row";
-    if (!e.allDay && end <= now) row.classList.add("past");
-    if (!e.allDay && start <= now && now < end) row.classList.add("now");
+  const shown = agendaExpanded ? all : ahead.slice(0, AGENDA_CAP);
+  shown.forEach((e) => renderAgendaRow(list, e, now));
 
-    const time = document.createElement("div");
-    time.className = "agenda-time";
-    time.textContent = e.allDay ? "all day" : hhmm(e.start);
-    if (!e.allDay) {
-      const until = document.createElement("span");
-      until.textContent = hhmm(e.end);
-      time.appendChild(until);
-    }
-
-    const body = document.createElement("div");
-    body.className = "row-body";
-    body.style.cursor = "default";
-    const title = document.createElement("div");
-    title.className = "row-title";
-    title.textContent = e.title;
-    body.appendChild(title);
-
-    row.appendChild(time);
-    row.appendChild(body);
-    list.appendChild(row);
-  });
+  // One toggle row, only when something is hidden (or to collapse again).
+  const hiddenLater = ahead.length - Math.min(ahead.length, AGENDA_CAP);
+  if (agendaExpanded || hiddenLater > 0 || doneCount > 0) {
+    const parts = [];
+    if (hiddenLater > 0) parts.push(`${hiddenLater} later`);
+    if (doneCount > 0) parts.push(`${doneCount} earlier`);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "agenda-more";
+    btn.textContent = agendaExpanded ? "Show less" : `Show all · ${parts.join(" · ")}`;
+    btn.setAttribute("aria-expanded", String(agendaExpanded));
+    btn.addEventListener("click", () => {
+      if (wasDrag()) return; // 4.0.2 — a scroll gesture isn't a tap
+      agendaExpanded = !agendaExpanded;
+      if (hasCacheMetadata()) render(sortTasks(getCache()));
+    });
+    list.appendChild(btn);
+  }
 }
 
 // Fire-and-forget: the agenda never blocks or fails the Tasks load. On
