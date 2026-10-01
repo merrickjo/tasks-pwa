@@ -296,8 +296,104 @@ el("capture-form").addEventListener("submit", async (e) => {
   }
 });
 
+// --- AGENDA · TODAY (4.3.3) — same /api/events feed and same per-day
+// cache key as the mobile app, so both surfaces agree. Desktop has room,
+// but keeps the same rule: what's still ahead, capped, with one toggle.
+const AGENDA_KEY = "agenda-cache-v1";
+const AGENDA_CAP = 5;
+const AGENDA_STALE_MS = 3 * 60 * 60 * 1000;
+let agendaExpanded = false;
+
+function getAgenda() {
+  try {
+    const a = JSON.parse(localStorage.getItem(AGENDA_KEY));
+    if (a && a.date === todayISO() && Array.isArray(a.events)) return a;
+  } catch {}
+  return null;
+}
+function hhmm(iso) {
+  const d = new Date(iso);
+  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}
+
+function renderAgenda() {
+  const box = el("agenda");
+  box.innerHTML = "";
+  const agenda = getAgenda();
+  if (!agenda || !agenda.events.length) { box.style.display = "none"; return; }
+  box.style.display = "block";
+  const now = Date.now();
+  const all = agenda.events;
+  const ahead = all.filter((e) => e.allDay || Date.parse(e.end) > now);
+  const doneCount = all.length - ahead.length;
+
+  const h = document.createElement("div");
+  h.className = "section-label agenda-label";
+  const t = document.createElement("span");
+  t.textContent = ahead.length ? `Agenda · ${ahead.length} left today` : `Agenda · all ${all.length} done`;
+  h.appendChild(t);
+  if (agenda.syncedAt && now - Date.parse(agenda.syncedAt) > AGENDA_STALE_MS) {
+    const s = document.createElement("span");
+    s.className = "agenda-stale";
+    s.textContent = "synced " + hhmm(agenda.syncedAt);
+    h.appendChild(s);
+  }
+  box.appendChild(h);
+
+  const shown = agendaExpanded ? all : ahead.slice(0, AGENDA_CAP);
+  shown.forEach((e) => {
+    const start = Date.parse(e.start), end = Date.parse(e.end);
+    const row = document.createElement("div");
+    row.className = "agenda-row";
+    if (!e.allDay && end <= now) row.classList.add("past");
+    if (!e.allDay && start <= now && now < end) row.classList.add("now");
+    const time = document.createElement("span");
+    time.className = "agenda-time";
+    time.textContent = e.allDay ? "all day" : `${hhmm(e.start)}–${hhmm(e.end)}`;
+    const title = document.createElement("span");
+    title.className = "agenda-title";
+    title.textContent = e.title;
+    row.appendChild(time);
+    row.appendChild(title);
+    box.appendChild(row);
+  });
+
+  const hiddenLater = ahead.length - Math.min(ahead.length, AGENDA_CAP);
+  if (agendaExpanded || hiddenLater > 0 || doneCount > 0) {
+    const parts = [];
+    if (hiddenLater > 0) parts.push(`${hiddenLater} later`);
+    if (doneCount > 0) parts.push(`${doneCount} earlier`);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "agenda-more";
+    btn.textContent = agendaExpanded ? "Show less" : `Show all · ${parts.join(" · ")}`;
+    btn.addEventListener("click", () => { agendaExpanded = !agendaExpanded; renderAgenda(); });
+    box.appendChild(btn);
+  }
+}
+
+let agendaFetchedAt = 0;
+async function refreshAgenda() {
+  agendaFetchedAt = Date.now();
+  renderAgenda(); // cached first
+  try {
+    const date = todayISO();
+    const fresh = await apiFetch(`/api/events?date=${date}`);
+    localStorage.setItem(AGENDA_KEY, JSON.stringify({ date, syncedAt: fresh.syncedAt, events: fresh.events || [] }));
+  } catch {}
+  renderAgenda();
+}
+// Desktop tabs stay open all day: refresh on focus (throttled) and
+// re-render each minute so "now" and finished meetings stay true.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && getConfig() && Date.now() - agendaFetchedAt > 10 * 60 * 1000) refreshAgenda();
+});
+setInterval(() => { if (getConfig()) renderAgenda(); }, 60 * 1000);
+setInterval(() => { if (getConfig()) refreshAgenda(); }, 30 * 60 * 1000);
+
 // --- boot ---
 async function boot() {
+  refreshAgenda(); // parallel, never blocks tasks
   const cached = sortTasks(getCache());
   if (hasCacheMetadata()) render(cached);
 

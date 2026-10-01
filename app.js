@@ -7,6 +7,8 @@
 // zero tasks) from "no cache at all" (metadata absent) — getCache() used to
 // return [] for both, which rendered a connection error over a real "No
 // open tasks" state. One-time fallback reads the old bare-array key.
+// 4.3.3 — shown on the date line so "which version am I on?" is answerable at a glance.
+const APP_BUILD = "v4.3.3";
 const CACHE_KEY = "tasks-cache-v2";
 const LEGACY_CACHE_KEY = "tasks-cache-v1";
 const CFG_KEY = "tasks-cfg-v1";
@@ -500,7 +502,7 @@ function render(allTasks) {
   document.getElementById("task-count").textContent = countText;
   document.getElementById("today-date").textContent = new Date().toLocaleDateString(undefined, {
     weekday: "long", month: "short", day: "numeric",
-  });
+  }) + " · " + APP_BUILD;
 
   // Phase 3 req 7 -- the mandate ring is independent of Notion task state
   // and every Tasks view, so it renders on every call here, not gated on
@@ -599,8 +601,17 @@ function renderAgendaRow(list, e, now) {
   list.appendChild(row);
 }
 
+let agendaError = null; // 4.3.3 — last fetch failure, shown instead of silence
+
 function renderAgendaGroup(list) {
   const agenda = getAgenda();
+  if (!agenda && agendaError) {
+    const h = document.createElement("div");
+    h.className = "section-label agenda-group-label";
+    h.textContent = `AGENDA · couldn't load (${agendaError})`;
+    list.appendChild(h);
+    return;
+  }
   if (!agenda || !agenda.events.length) return;
   const now = Date.now();
   const all = agenda.events;
@@ -652,13 +663,17 @@ async function refreshAgenda() {
   try {
     const date = todayISO();
     const fresh = await apiFetch(`/api/events?date=${date}`);
+    agendaError = null;
     const before = JSON.stringify(getAgenda());
     const next = { date, syncedAt: fresh.syncedAt, events: fresh.events || [] };
     if (JSON.stringify(next) === before) return;
     setAgenda(next);
     if (hasCacheMetadata()) render(sortTasks(getCache()));
-  } catch {
-    // offline or Worker unreachable — keep whatever today's cache holds
+  } catch (e) {
+    // offline or Worker unreachable — keep whatever today's cache holds,
+    // but say so when there's nothing cached to show.
+    agendaError = String((e && e.message) || e).replace("request failed: ", "HTTP ");
+    if (!getAgenda() && hasCacheMetadata()) render(sortTasks(getCache()));
   }
 }
 

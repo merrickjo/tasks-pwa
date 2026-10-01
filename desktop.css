@@ -123,3 +123,24 @@ body {
 .edit-panel button { padding: 8px 14px; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; }
 .edit-panel .save { background: var(--accent); color: #fff; }
 .edit-panel .cancel { background: transparent; color: var(--ink-soft); border: 1px solid var(--border); }
+
+/* 4.3.3 — AGENDA · TODAY (read-only calendar mirror) */
+.agenda { margin-bottom: 8px; }
+.agenda-label { display: flex; justify-content: space-between; gap: 12px; margin-top: 0; }
+.agenda-stale { text-transform: none; letter-spacing: 0; }
+.agenda-row {
+  display: flex; gap: 14px; align-items: baseline; padding: 8px 12px;
+  border-bottom: 1px solid var(--border); font-size: 14px;
+}
+.agenda-row:last-of-type { border-bottom: 0; }
+.agenda-time {
+  flex: 0 0 96px; font-family: var(--ck-data);
+  font-size: 12px; color: var(--ink-soft);
+}
+.agenda-row.past { opacity: 0.45; }
+.agenda-row.now { border-left: 3px solid var(--accent); padding-left: 9px; }
+.agenda-row.now .agenda-time { color: var(--ink); font-weight: 600; }
+.agenda-more {
+  margin: 4px 0 0 122px; padding: 4px 0; background: none; border: 0;
+  color: var(--ink-soft); font-size: 12px; cursor: pointer; text-decoration: underline;
+}
