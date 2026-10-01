@@ -214,7 +214,9 @@
 // tables). concursus.js changed, so the shell must re-install.
 // v41 -> v42: HZ2 range 115–135 + talk test; Water non-negotiable
 // (MCU 2024 vs 2025 review). concursus.js changed.
-const CACHE_NAME = "tasks-shell-v42";
+// v42 -> v43: new N-system app icon (icons/*.png replaced, PNG
+// apple-touch-icon added). Icons are shell files, so re-install.
+const CACHE_NAME = "tasks-shell-v43";
 const SHELL = [
   "./",
   "./index.html",
@@ -228,6 +230,7 @@ const SHELL = [
   "./desktop.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
+  "./icons/apple-touch-icon.png",
   "./fonts/ibm-plex-sans-latin-400-normal.woff2",
   "./fonts/ibm-plex-sans-latin-400-italic.woff2",
   "./fonts/ibm-plex-sans-latin-600-normal.woff2",
