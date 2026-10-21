@@ -108,3 +108,28 @@ straightforward additions once this is running — say the word.
 | label (read-only in v1) | Labels (first value shown) |
 | notes | Notes |
 | — | Completed at (auto-set when you check a task done) |
+
+## Google Calendar (4.4 · Worker v10)
+
+The CALENDAR tab shows Outlook (the Mac mirror, next 7 days) plus your own
+Google calendar (primary), and adds events to Google. The Worker holds the
+Google refresh token in D1 `meta`; the PWA never sees a Google credential.
+
+One-time setup at console.cloud.google.com:
+1. Create a project ("Notch").
+2. APIs & Services → Library → **Google Calendar API** → Enable.
+3. Google Auth Platform → Branding: app name Notch, your email. Audience:
+   External, then **Publish app** (In production). Left in Testing, Google
+   expires the refresh token every 7 days.
+4. Data access → add scope `https://www.googleapis.com/auth/calendar.events`.
+5. Clients → Create client → Web application. Authorized redirect URI:
+   `https://tasks-proxy.merrickjo.workers.dev/oauth/google/callback`
+6. From `worker/`, paste the client ID and secret when prompted:
+```bash
+wrangler secret put GOOGLE_CLIENT_ID
+```
+```bash
+wrangler secret put GOOGLE_CLIENT_SECRET
+```
+Then CALENDAR tab → **Connect**. Google shows an "unverified app" screen
+once (Advanced → Go to Notch); that's expected for a personal app.
