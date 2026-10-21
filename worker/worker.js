@@ -208,6 +208,46 @@ async function readJson(request) {
   try { return await request.json(); } catch { return undefined; }
 }
 
+// ── Obsidian sync (v5.0) ───────────────────────────────────────────────────
+// The Obsidian vault (Notch/Tasks) is the source of truth; D1 is the phone
+// cache. notch-tasks-sync on the Mac reconciles the two through these three
+// routes. They take full rows (labels as an array) and keep the caller's
+// updated_at, so the sync can do last-write-wins without guessing.
+const SYNC_STATUS = ["To do", "Done", "Canceled"];
+async function listAllForSync(env) {
+  const { results } = await env.DB.prepare(`SELECT * FROM tasks ORDER BY created_at`).all();
+  return results;
+}
+async function upsertForSync(env, id, t) {
+  if (!t || typeof t !== "object") throw validationError("body", "request body must be a JSON object");
+  const title = typeof t.title === "string" ? t.title.trim().slice(0, 200) : "";
+  if (!title) throw validationError("title", "title is required");
+  const status = SYNC_STATUS.includes(t.status) ? t.status : "To do";
+  const priority = PRIORITY_NAMES.includes(t.priority) ? t.priority : null;
+  const area = AREA_NAMES.includes(t.area) ? t.area : null;
+  const due = typeof t.due === "string" && DATE_RE.test(t.due.slice(0, 10)) ? t.due : null;
+  const done = typeof t.completed_at === "string" && DATE_RE.test(t.completed_at.slice(0, 10)) ? t.completed_at.slice(0, 10) : null;
+  const labels = JSON.stringify(Array.isArray(t.labels) ? t.labels.filter((x) => typeof x === "string").slice(0, 20) : []);
+  const now = new Date().toISOString();
+  const created = typeof t.created_at === "string" && t.created_at ? t.created_at : now;
+  const updated = typeof t.updated_at === "string" && t.updated_at ? t.updated_at : now;
+  await env.DB.prepare(
+    `INSERT INTO tasks (id, title, status, priority, due, area, labels, notes, completed_at, source, recurrence, created_at, updated_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+     ON CONFLICT(id) DO UPDATE SET title = excluded.title, status = excluded.status, priority = excluded.priority,
+       due = excluded.due, area = excluded.area, labels = excluded.labels, notes = excluded.notes,
+       completed_at = excluded.completed_at, source = excluded.source, recurrence = excluded.recurrence,
+       updated_at = excluded.updated_at`
+  ).bind(id, title, status, priority, due, area, labels, typeof t.notes === "string" ? t.notes : "",
+    done, typeof t.source === "string" ? t.source.slice(0, 60) : null,
+    typeof t.recurrence === "string" ? t.recurrence : null, created, updated).run();
+  return getTask(env, id);
+}
+async function deleteForSync(env, id) {
+  const res = await env.DB.prepare(`DELETE FROM tasks WHERE id = ?1`).bind(id).run();
+  return res.meta.changes;
+}
+
 export async function handle(request, env) {
   if (request.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders(env) });
@@ -257,6 +297,21 @@ export async function handle(request, env) {
       catch (e) { if (e.isValidation) return json({ error: e.message, field: e.field }, 400, env); throw e; }
       await replaceEvents(env, input.from, input.to, events);
       return json({ ok: true, stored: events.length }, 200, env);
+    }
+    if (parts[0] === "api" && parts[1] === "sync" && parts[2] === "tasks" && !parts[3] && request.method === "GET") {
+      return json({ tasks: await listAllForSync(env) }, 200, env);
+    }
+    if (parts[0] === "api" && parts[1] === "sync" && parts[2] === "tasks" && parts[3] && (request.method === "PUT" || request.method === "DELETE")) {
+      if (!UUID_RE.test(parts[3])) return json({ error: "task id must be a UUID", field: "id" }, 400, env);
+      if (request.method === "DELETE") return json({ ok: true, deleted: await deleteForSync(env, parts[3]) }, 200, env);
+      const input = await readJson(request);
+      if (input === undefined) return json({ error: "body must be valid JSON", field: "body" }, 400, env);
+      try {
+        return json(await upsertForSync(env, parts[3], input), 200, env);
+      } catch (e) {
+        if (e.isValidation) return json({ error: e.message, field: e.field }, 400, env);
+        throw e;
+      }
     }
     return json({ error: "not found" }, 404, env);
   } catch (e) {
