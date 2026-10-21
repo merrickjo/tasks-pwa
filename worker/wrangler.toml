@@ -6,9 +6,13 @@ compatibility_date = "2026-01-01"
 # gate (the app key is), but leaving it at the "*" default was hygiene debt.
 [vars]
 ALLOWED_ORIGIN = "https://merrickjo.github.io"
+# v10: where Google's OAuth callback sends the browser back to.
+APP_URL = "https://merrickjo.github.io/tasks-pwa/"
 
 # Secrets are NOT set here — run these once from the worker/ folder:
 #   wrangler secret put APP_KEY
+#   wrangler secret put GOOGLE_CLIENT_ID      (v10, Google Calendar)
+#   wrangler secret put GOOGLE_CLIENT_SECRET  (v10, Google Calendar)
 
 [[d1_databases]]
 binding = "DB"

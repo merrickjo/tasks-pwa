@@ -1,5 +1,9 @@
 // Tasks API — Cloudflare Worker + D1
 //
+// v10 (21 Oct 2026): + Google Calendar — /api/calendar (month range,
+//   Outlook mirror + live Google), /api/calendar/events (add/delete in
+//   Google), /api/google/* (connect/status/disconnect), and the OAuth
+//   callback at /oauth/google/callback. /api/agenda now includes Google.
 // v9 (1 Oct 2026): + /api/events calendar mirror (see bottom of file).
 // v8 (28 Sep 2026): Notion retired. Tasks live in the D1 database bound as
 // `DB` (schema: schema.sql). The HTTP contract is unchanged from the Notion
@@ -55,7 +59,7 @@ function validateInput(input, { partial }) {
 export function corsHeaders(env) {
   return {
     "access-control-allow-origin": env.ALLOWED_ORIGIN || "*",
-    "access-control-allow-methods": "GET,POST,PATCH,PUT,OPTIONS",
+    "access-control-allow-methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
     "access-control-allow-headers": "content-type,x-app-key",
   };
 }
@@ -248,16 +252,307 @@ async function deleteForSync(env, id) {
   return res.meta.changes;
 }
 
+// ── Google Calendar (v10, 21 Oct 2026) ─────────────────────────────────────
+// Merrick's own Google calendar (primary only), read live — never mirrored
+// into the events table, so the Outlook push's window-replace can't touch it.
+// The Worker holds the OAuth refresh token (D1 meta), exactly as it holds
+// every other Notch credential; the PWA only ever sees event titles + times.
+//
+// Secrets: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET (wrangler secret put …)
+// Var:     APP_URL — where the OAuth callback sends the browser back to.
+const G_SCOPE = "https://www.googleapis.com/auth/calendar.events";
+const G_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const G_API = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+const G_TIMEOUT_MS = 6000;
+const TZ = "Asia/Jakarta";
+const MAX_RANGE_DAYS = 62;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+async function getMeta(env, key) {
+  const r = await env.DB.prepare(`SELECT value FROM meta WHERE key = ?1`).bind(key).first();
+  return r ? r.value : null;
+}
+function setMetaStmt(env, key, value) {
+  return env.DB.prepare(
+    `INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).bind(key, value);
+}
+async function setMeta(env, key, value) { await setMetaStmt(env, key, value).run(); }
+async function delMeta(env, ...keys) {
+  await env.DB.batch(keys.map((k) => env.DB.prepare(`DELETE FROM meta WHERE key = ?1`).bind(k)));
+}
+
+function googleConfigured(env) { return !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET); }
+function googleRedirect(url) { return `${url.origin}/oauth/google/callback`; }
+
+function gError(code, message) {
+  const e = new Error(message || code);
+  e.gcode = code;
+  return e;
+}
+
+async function gFetch(input, init = {}) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), G_TIMEOUT_MS);
+  try { return await fetch(input, { ...init, signal: ctl.signal }); }
+  catch (e) { throw gError("google_unreachable", "Google didn't answer in time"); }
+  finally { clearTimeout(t); }
+}
+
+async function googleStatus(env) {
+  if (!googleConfigured(env)) return "not_configured";
+  return (await getMeta(env, "google_refresh_token")) ? "connected" : "not_connected";
+}
+
+// Single-use state, 10-minute life. The callback is the one route that can't
+// carry x-app-key (Google's redirect is a plain browser navigation), so this
+// state is what proves the round trip started from Notch.
+async function googleConnectUrl(env, url) {
+  if (!googleConfigured(env)) throw gError("not_configured", "Google isn't set up on the Worker yet");
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  const state = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+  await setMeta(env, "google_oauth_state", `${state}|${Date.now() + 10 * 60 * 1000}`);
+  const q = new URLSearchParams({
+    client_id: env.GOOGLE_CLIENT_ID,
+    redirect_uri: googleRedirect(url),
+    response_type: "code",
+    scope: G_SCOPE,
+    access_type: "offline",
+    prompt: "consent",            // always returns a refresh token
+    include_granted_scopes: "true",
+    state,
+  });
+  return "https://accounts.google.com/o/oauth2/v2/auth?" + q.toString();
+}
+
+function appUrl(env) {
+  return env.APP_URL || ((env.ALLOWED_ORIGIN || "https://merrickjo.github.io") + "/tasks-pwa/");
+}
+function backToApp(env, result) {
+  // A hash, not a query string: the service worker serves "./" cache-first,
+  // and a ?query would miss that cache entry.
+  return Response.redirect(appUrl(env) + "#google=" + encodeURIComponent(result), 302);
+}
+
+async function googleCallback(env, url) {
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state") || "";
+  const saved = (await getMeta(env, "google_oauth_state")) || "";
+  await delMeta(env, "google_oauth_state"); // single use, pass or fail
+  const [savedState, exp] = saved.split("|");
+  if (!savedState || state !== savedState || Date.now() > Number(exp)) return backToApp(env, "expired");
+  if (url.searchParams.get("error") || !code) return backToApp(env, "denied");
+
+  const res = await gFetch(G_TOKEN_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code,
+      client_id: env.GOOGLE_CLIENT_ID,
+      client_secret: env.GOOGLE_CLIENT_SECRET,
+      redirect_uri: googleRedirect(url),
+      grant_type: "authorization_code",
+    }),
+  });
+  const tok = await res.json().catch(() => ({}));
+  if (!res.ok || !tok.refresh_token) return backToApp(env, "failed");
+  await env.DB.batch([
+    setMetaStmt(env, "google_refresh_token", tok.refresh_token),
+    setMetaStmt(env, "google_access_token", `${tok.access_token}|${Date.now() + (tok.expires_in || 3600) * 1000}`),
+  ]);
+  return backToApp(env, "connected");
+}
+
+async function googleAccessToken(env) {
+  const cached = (await getMeta(env, "google_access_token")) || "";
+  const [tokenVal, exp] = cached.split("|");
+  if (tokenVal && Date.now() < Number(exp) - 60000) return tokenVal;
+  const refresh = await getMeta(env, "google_refresh_token");
+  if (!refresh) throw gError("not_connected", "Google isn't connected");
+  const res = await gFetch(G_TOKEN_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      refresh_token: refresh,
+      client_id: env.GOOGLE_CLIENT_ID,
+      client_secret: env.GOOGLE_CLIENT_SECRET,
+      grant_type: "refresh_token",
+    }),
+  });
+  const tok = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    if (tok.error === "invalid_grant") {
+      // Revoked or expired — forget it so the app offers Connect again
+      // instead of failing on every load.
+      await delMeta(env, "google_refresh_token", "google_access_token");
+      throw gError("not_connected", "Google access was revoked — connect again");
+    }
+    throw gError("google_error", `Google token refresh failed (${res.status})`);
+  }
+  await setMeta(env, "google_access_token", `${tok.access_token}|${Date.now() + (tok.expires_in || 3600) * 1000}`);
+  return tok.access_token;
+}
+
+async function googleApi(env, path, init = {}) {
+  const token = await googleAccessToken(env);
+  const res = await gFetch(G_API + path, {
+    ...init,
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json", ...(init.headers || {}) },
+  });
+  if (res.status === 204) return null;
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = (body.error && body.error.message) || `HTTP ${res.status}`;
+    throw gError(res.status === 404 || res.status === 410 ? "not_found" : "google_error", `Google: ${msg}`);
+  }
+  return body;
+}
+
+function addDaysISO(iso, n) {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+// Google event -> one row per day it touches (all-day spans are expanded so a
+// three-day trip marks three cells; timed events sit on their start day).
+// Titles + times only. Declined invitations and working-location markers
+// are dropped — they aren't things on the day.
+function mapGoogleEvent(g, from, to) {
+  if (!g || g.status === "cancelled" || g.eventType === "workingLocation") return [];
+  const me = (g.attendees || []).find((a) => a.self);
+  if (me && me.responseStatus === "declined") return [];
+  const allDay = !!(g.start && g.start.date);
+  const start = allDay ? g.start.date : g.start && g.start.dateTime;
+  const end = allDay ? g.end.date : (g.end && g.end.dateTime) || start;
+  if (!start) return [];
+  const base = { id: g.id, title: (g.summary || "").trim().slice(0, 200) || "(no title)", start, end, allDay, source: "google" };
+  if (!allDay) {
+    const date = jakartaDateOf(start);
+    return date >= from && date <= to ? [{ ...base, date }] : [];
+  }
+  const out = [];
+  for (let d = start, i = 0; d < end && i < 62; d = addDaysISO(d, 1), i++) {
+    if (d >= from && d <= to) out.push({ ...base, date: d });
+  }
+  return out;
+}
+
+async function googleEventsInRange(env, from, to) {
+  const q = new URLSearchParams({
+    timeMin: `${from}T00:00:00+07:00`,
+    timeMax: `${addDaysISO(to, 1)}T00:00:00+07:00`,
+    singleEvents: "true",
+    orderBy: "startTime",
+    maxResults: "500",
+    timeZone: TZ,
+    fields: "items(id,status,summary,start,end,eventType,attendees(self,responseStatus))",
+  });
+  const body = await googleApi(env, "?" + q.toString());
+  return (body.items || []).flatMap((g) => mapGoogleEvent(g, from, to));
+}
+
+// Never throws: the calendar degrades to Outlook-only with a reason.
+async function googleBlock(env, from, to) {
+  const status = await googleStatus(env);
+  if (status !== "connected") return { status, events: [] };
+  try {
+    return { status, events: await googleEventsInRange(env, from, to) };
+  } catch (e) {
+    const s = e.gcode === "not_connected" ? "not_connected" : "error";
+    return { status: s, error: e.message, events: [] };
+  }
+}
+
+async function outlookInRange(env, from, to) {
+  const { results } = await env.DB.prepare(
+    `SELECT date, start, end, all_day, title FROM events WHERE date >= ?1 AND date <= ?2 ORDER BY date, all_day DESC, start`
+  ).bind(from, to).all();
+  const syncedAt = await getMeta(env, "events_synced_at");
+  return {
+    syncedAt,
+    events: results.map((r) => ({ date: r.date, title: r.title, start: r.start, end: r.end, allDay: !!r.all_day, source: "outlook" })),
+  };
+}
+
+function validateRange(url) {
+  const from = url.searchParams.get("from") || "";
+  const to = url.searchParams.get("to") || "";
+  if (!DATE_RE.test(from)) throw validationError("from", "from must be YYYY-MM-DD");
+  if (!DATE_RE.test(to)) throw validationError("to", "to must be YYYY-MM-DD");
+  if (to < from) throw validationError("to", "to must not be before from");
+  if ((Date.parse(to) - Date.parse(from)) / 86400000 > MAX_RANGE_DAYS) {
+    throw validationError("to", `range must be ${MAX_RANGE_DAYS} days or fewer`);
+  }
+  return { from, to };
+}
+
+async function calendarRange(env, from, to) {
+  const [outlook, google] = await Promise.all([outlookInRange(env, from, to), googleBlock(env, from, to)]);
+  return { from, to, outlook, google };
+}
+
+function validateNewEvent(input) {
+  if (!input || typeof input !== "object") throw validationError("body", "request body must be a JSON object");
+  const title = typeof input.title === "string" ? input.title.trim() : "";
+  if (!title || title.length > 200) throw validationError("title", "title must be 1–200 characters");
+  if (!DATE_RE.test(input.date || "")) throw validationError("date", "date must be YYYY-MM-DD");
+  const timed = input.start !== undefined && input.start !== null && input.start !== "";
+  if (!timed) return { title, date: input.date, allDay: true };
+  if (!TIME_RE.test(input.start)) throw validationError("start", "start must be HH:MM");
+  if (!TIME_RE.test(input.end || "")) throw validationError("end", "end must be HH:MM");
+  if (input.end <= input.start) throw validationError("end", "end must be after start");
+  return { title, date: input.date, allDay: false, start: input.start, end: input.end };
+}
+
+async function createGoogleEvent(env, ev) {
+  const body = ev.allDay
+    ? { summary: ev.title, start: { date: ev.date }, end: { date: addDaysISO(ev.date, 1) } }
+    : {
+        summary: ev.title,
+        start: { dateTime: `${ev.date}T${ev.start}:00`, timeZone: TZ },
+        end: { dateTime: `${ev.date}T${ev.end}:00`, timeZone: TZ },
+      };
+  const g = await googleApi(env, "", { method: "POST", body: JSON.stringify(body) });
+  return mapGoogleEvent(g, ev.date, ev.date)[0] || null;
+}
+
+// The Tasks tab's AGENDA · TODAY: Outlook mirror + Google, one list.
+async function agendaForDay(env, date) {
+  const base = await listEvents(env, date);
+  const outlook = base.events.map((e) => ({ ...e, source: "outlook" }));
+  const g = await googleBlock(env, date, date);
+  const events = [...outlook, ...g.events.map(({ date: _d, ...e }) => e)].sort((a, b) =>
+    a.allDay !== b.allDay ? (a.allDay ? -1 : 1) : Date.parse(a.start) - Date.parse(b.start));
+  return { ...base, events, google: g.status, googleError: g.error || null };
+}
+
+function gErrorResponse(e, env) {
+  if (e.gcode === "not_configured" || e.gcode === "not_connected") return json({ error: e.message, code: e.gcode }, 409, env);
+  if (e.gcode === "not_found") return json({ error: e.message, code: e.gcode }, 404, env);
+  if (e.gcode) return json({ error: e.message, code: e.gcode }, 502, env);
+  return null;
+}
+
 export async function handle(request, env) {
   if (request.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders(env) });
   }
-  if (!env.APP_KEY || (request.headers.get("x-app-key") || "") !== env.APP_KEY) {
-    return json({ error: "unauthorized" }, 401, env);
-  }
 
   const url = new URL(request.url);
   const parts = url.pathname.split("/").filter(Boolean);
+
+  // The one unauthenticated route: Google's redirect back after consent.
+  // It is guarded by the single-use state minted in /api/google/connect.
+  if (parts[0] === "oauth" && parts[1] === "google" && parts[2] === "callback" && request.method === "GET") {
+    if (!googleConfigured(env)) return backToApp(env, "not_configured");
+    try { return await googleCallback(env, url); }
+    catch (e) { return backToApp(env, "failed"); }
+  }
+
+  if (!env.APP_KEY || (request.headers.get("x-app-key") || "") !== env.APP_KEY) {
+    return json({ error: "unauthorized" }, 401, env);
+  }
 
   try {
     if (parts[0] === "api" && parts[1] === "tasks" && !parts[2] && request.method === "GET") {
@@ -287,7 +582,48 @@ export async function handle(request, env) {
     if (parts[0] === "api" && (parts[1] === "agenda" || parts[1] === "events") && !parts[2] && request.method === "GET") {
       const date = url.searchParams.get("date") || jakartaISO();
       if (!DATE_RE.test(date)) return json({ error: "date must be YYYY-MM-DD", field: "date" }, 400, env);
-      return json(await listEvents(env, date), 200, env);
+      return json(await agendaForDay(env, date), 200, env);
+    }
+    if (parts[0] === "api" && parts[1] === "calendar" && !parts[2] && request.method === "GET") {
+      let range;
+      try { range = validateRange(url); }
+      catch (e) { if (e.isValidation) return json({ error: e.message, field: e.field }, 400, env); throw e; }
+      return json(await calendarRange(env, range.from, range.to), 200, env);
+    }
+    if (parts[0] === "api" && parts[1] === "calendar" && parts[2] === "events" && !parts[3] && request.method === "POST") {
+      const input = await readJson(request);
+      if (input === undefined) return json({ error: "body must be valid JSON", field: "body" }, 400, env);
+      let ev;
+      try { ev = validateNewEvent(input); }
+      catch (e) { if (e.isValidation) return json({ error: e.message, field: e.field }, 400, env); throw e; }
+      try { return json(await createGoogleEvent(env, ev), 201, env); }
+      catch (e) { const r = gErrorResponse(e, env); if (r) return r; throw e; }
+    }
+    if (parts[0] === "api" && parts[1] === "calendar" && parts[2] === "events" && parts[3] && !parts[4] && request.method === "DELETE") {
+      if (!/^[A-Za-z0-9_-]{1,1024}$/.test(parts[3])) return json({ error: "bad event id", field: "id" }, 400, env);
+      try { await googleApi(env, "/" + encodeURIComponent(parts[3]), { method: "DELETE" }); return json({ ok: true }, 200, env); }
+      catch (e) { const r = gErrorResponse(e, env); if (r) return r; throw e; }
+    }
+    if (parts[0] === "api" && parts[1] === "google" && parts[2] === "status" && request.method === "GET") {
+      return json({ status: await googleStatus(env) }, 200, env);
+    }
+    if (parts[0] === "api" && parts[1] === "google" && parts[2] === "connect" && request.method === "POST") {
+      try { return json({ url: await googleConnectUrl(env, url) }, 200, env); }
+      catch (e) { const r = gErrorResponse(e, env); if (r) return r; throw e; }
+    }
+    if (parts[0] === "api" && parts[1] === "google" && parts[2] === "disconnect" && request.method === "POST") {
+      const refresh = await getMeta(env, "google_refresh_token");
+      if (refresh) {
+        try {
+          await gFetch("https://oauth2.googleapis.com/revoke", {
+            method: "POST",
+            headers: { "content-type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ token: refresh }),
+          });
+        } catch { /* forget locally even if Google is unreachable */ }
+      }
+      await delMeta(env, "google_refresh_token", "google_access_token", "google_oauth_state");
+      return json({ ok: true, status: await googleStatus(env) }, 200, env);
     }
     if (parts[0] === "api" && (parts[1] === "agenda" || parts[1] === "events") && !parts[2] && request.method === "PUT") {
       const input = await readJson(request);

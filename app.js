@@ -8,7 +8,7 @@
 // return [] for both, which rendered a connection error over a real "No
 // open tasks" state. One-time fallback reads the old bare-array key.
 // 4.3.3 — shown on the date line so "which version am I on?" is answerable at a glance.
-const APP_BUILD = "v4.3.4";
+const APP_BUILD = "v4.4.0";
 const CACHE_KEY = "tasks-cache-v2";
 const LEGACY_CACHE_KEY = "tasks-cache-v1";
 const CFG_KEY = "tasks-cfg-v1";
@@ -1531,9 +1531,12 @@ document.addEventListener("visibilitychange", () => {
   // 4.0.2 safety net: sheet-open is `overflow: hidden` on <body>. If no
   // sheet is actually open, that class has no business being there —
   // clear it rather than leave the page silently unscrollable.
-  if (!editingTask) document.body.classList.remove("sheet-open");
+  const calSheet = document.getElementById("cal-sheet");
+  if (!editingTask && !(calSheet && calSheet.classList.contains("show"))) document.body.classList.remove("sheet-open");
   // 4.3 — meetings move during the day; refresh on resume, throttled.
   if (getConfig() && Date.now() - agendaFetchedAt > AGENDA_REFETCH_MS) refreshAgenda();
+  // 4.4 — the calendar tab refreshes itself on resume (its own 5-min throttle).
+  if (getConfig() && activeTab === "calendar" && typeof NOTCH_CAL !== "undefined") NOTCH_CAL.refresh();
   const all = sortTasks(getCache());
 
   const concursusDateStale =
@@ -1575,12 +1578,15 @@ renderMandateRing = function () {
 // tab is recorded for the current session (sessionStorage, not localStorage
 // — a fresh app open should default back to Tasks).
 const TAB_SESSION_KEY = "app-tab-v1";
-const VALID_TABS = ["tasks", "concursus"];
+const VALID_TABS = ["tasks", "calendar", "concursus"];
+let activeTab = "tasks";
 
 function setActiveTab(tab) {
   if (!VALID_TABS.includes(tab)) return;
+  activeTab = tab;
   const appEl = document.getElementById("app");
   const ccEl = document.getElementById("concursus-view");
+  const calEl = document.getElementById("calendar-view");
   const tabbarEl = document.getElementById("tabbar");
 
   tabbarEl.querySelectorAll(".tab-btn").forEach((btn) => {
@@ -1589,13 +1595,19 @@ function setActiveTab(tab) {
     btn.setAttribute("aria-selected", String(isActive));
   });
   document.body.classList.toggle("concursus-active", tab === "concursus");
+  // 4.4 — like CONCURSUS, the calendar has no capture bar, so the scrim
+  // only needs nav-pill clearance (see .bottom-scrim in styles.css).
+  document.body.classList.toggle("calendar-active", tab === "calendar");
   appEl.style.display = tab === "tasks" ? "block" : "none";
   ccEl.style.display = tab === "concursus" ? "block" : "none";
+  calEl.style.display = tab === "calendar" ? "block" : "none";
 
   try { sessionStorage.setItem(TAB_SESSION_KEY, tab); } catch { /* non-fatal */ }
 
   if (tab === "concursus") {
     CONCURSUS.init(ccEl); // idempotent — safe to call on every switch
+  } else if (tab === "calendar") {
+    NOTCH_CAL.init(calEl); // idempotent — re-renders from cache, refetches if stale
   } else {
     // "Returning to Tasks triggers one Tasks render" (Phase 1 req 5) —
     // reuse the same cache-driven re-render the visibilitychange handler
@@ -1638,6 +1650,27 @@ function initTabRouter() {
     const stored = sessionStorage.getItem(TAB_SESSION_KEY);
     if (VALID_TABS.includes(stored)) initialTab = stored;
   } catch { /* default to tasks */ }
+
+  // 4.4 — back from Google sign-in: the Worker redirects to #google=<result>.
+  // Land on the calendar, say what happened, and clear the hash so a reload
+  // doesn't repeat the message.
+  const gm = /^#google=([a-z_]+)$/.exec(window.location.hash || "");
+  if (gm) {
+    initialTab = "calendar";
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+    const msgs = {
+      connected: "Google Calendar connected",
+      denied: "Google sign-in was cancelled",
+      expired: "Sign-in link expired — try Connect again",
+      not_configured: "Google isn't set up on the Worker yet",
+    };
+    setTimeout(() => showToast(msgs[gm[1]] || "Google sign-in failed"), 300);
+    try {
+      // The month cache still says "not connected" — drop it so the
+      // first render after sign-in fetches fresh.
+      if (gm[1] === "connected") localStorage.removeItem("calendar-cache-v1");
+    } catch {}
+  }
   setActiveTab(initialTab);
 }
 
