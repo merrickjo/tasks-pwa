@@ -23,6 +23,7 @@ const NOTCH_CAL = (function () {
   const MONTHS = ["January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"];
   const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"]; // Monday-first
+  const CELL_LINES = 3;                   // entries shown per cell on desktop
 
   let root = null;
   let viewYear, viewMonth;       // month on screen (month is 0-based)
@@ -212,6 +213,23 @@ const NOTCH_CAL = (function () {
       if (evN) marks.appendChild(el("span", "cal-mark", `○${evN}`));
       if (tkN) marks.appendChild(el("span", "cal-mark", `•${tkN}`));
       cell.appendChild(marks);
+      // 4.5 — wide screens have room for the entries themselves; CSS shows
+      // this list instead of the counts at ≥900px (phones keep the counts).
+      const lines = [
+        ...eventsFor(data, date).map((e) => ({ sig: "○", text: (e.allDay ? "" : hhmm(e.start) + " ") + e.title })),
+        ...(tmap[date] || []).map((t) => ({ sig: "•", text: t.title })),
+      ];
+      if (lines.length) {
+        const list = el("span", "cal-lines");
+        lines.slice(0, CELL_LINES).forEach((l) => {
+          const li = el("span", "cal-line");
+          li.appendChild(el("span", "cal-line-sig", l.sig));
+          li.appendChild(document.createTextNode(l.text));
+          list.appendChild(li);
+        });
+        if (lines.length > CELL_LINES) list.appendChild(el("span", "cal-line cal-line-more", `+${lines.length - CELL_LINES} more`));
+        cell.appendChild(list);
+      }
       cell.addEventListener("click", () => {
         if (!inMonth) { viewYear = d.getFullYear(); viewMonth = d.getMonth(); selected = date; render(); load(); return; }
         selected = date;
@@ -328,6 +346,8 @@ const NOTCH_CAL = (function () {
     const o = data && data.outlook;
     const synced = o && o.syncedAt ? ` · synced ${new Date(o.syncedAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })} ${hhmm(o.syncedAt)}` : "";
     box.appendChild(el("div", "cal-src-line", `WORK · Outlook, next 7 days only${synced}`));
+    // desktop only (CSS): the keyboard map
+    box.appendChild(el("div", "cal-keys", "KEYS · ← → day · ↑ ↓ week · [ ] month · t today · e add event · 1 2 3 tabs · n new task"));
     return box;
   }
 
@@ -524,5 +544,29 @@ const NOTCH_CAL = (function () {
     render();
     load(force);
   }
-  return { init, refresh };
+  // 4.5 — keyboard (app.js routes keys here only while CALENDAR is showing).
+  function goToday() {
+    const t = new Date();
+    viewYear = t.getFullYear(); viewMonth = t.getMonth(); selected = todayISO();
+    render(); load();
+  }
+  function moveDay(n) {
+    selected = addDays(selected || todayISO(), n);
+    const d = parseISO(selected);
+    if (d.getMonth() !== viewMonth || d.getFullYear() !== viewYear) {
+      viewYear = d.getFullYear(); viewMonth = d.getMonth();
+      render(); load();
+    } else render();
+  }
+  function sheetOpen() {
+    const s = document.getElementById("cal-sheet");
+    return !!(s && s.classList.contains("show"));
+  }
+  return {
+    init, refresh, goToday, moveDay, sheetOpen,
+    prevMonth: () => shiftMonth(-1),
+    nextMonth: () => shiftMonth(1),
+    addEvent: () => openSheet(),
+    closeSheet: () => closeSheet(),
+  };
 })();

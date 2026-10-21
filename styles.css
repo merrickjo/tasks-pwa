@@ -2279,3 +2279,114 @@ body.calendar-active .bottom-scrim {
 .cal-time-row { display: flex; align-items: center; gap: var(--s-2); }
 .cal-time-row .cal-input { flex: 1; min-width: 0; }
 .cal-time-sep { margin-bottom: var(--s-4); color: var(--ink-soft); }
+
+/* ===================================================================
+   4.5 — DESKTOP. The same app on a wide screen (desktop.html now opens
+   this app; the old tasks-only lite view is retired). Nothing new to
+   learn: each tab is still its own surface, it just stops stretching.
+   Tasks and CONCURSUS read as a 760px column, the calendar gets 1040px
+   so a cell can show its entries, and the fixed bottom stack (capture
+   bar, nav pill, sheets) centres on that column.
+   =================================================================== */
+.cal-lines { display: none; }
+.cal-keys { display: none; }
+
+@media (min-width: 900px) {
+  :root {
+    --desk-col: 760px;
+    --desk-cal: 1040px;
+    --gn-max: 520px;
+  }
+  html { background: var(--bg-subtle); }
+  body { background: var(--bg-subtle); }
+
+  #app,
+  #concursus-view,
+  #calendar-view {
+    width: 100%;
+    max-width: var(--desk-col);
+    margin: 0 auto;
+    background: var(--bg);
+    border-inline: 1px solid var(--border);
+    min-height: 100dvh;
+  }
+  #calendar-view { max-width: var(--desk-cal); }
+
+  /* capture bar sits on the Tasks column, not the window */
+  .capture {
+    left: max(0px, calc(50% - var(--desk-col) / 2));
+    right: max(0px, calc(50% - var(--desk-col) / 2));
+    border-inline: 1px solid var(--border);
+  }
+  .bottom-scrim {
+    left: max(0px, calc(50% - var(--desk-col) / 2));
+    right: max(0px, calc(50% - var(--desk-col) / 2));
+  }
+  body.calendar-active .bottom-scrim {
+    left: max(0px, calc(50% - var(--desk-cal) / 2));
+    right: max(0px, calc(50% - var(--desk-cal) / 2));
+  }
+
+  /* sheets become centred panels rising from the bottom */
+  .edit-sheet {
+    left: max(0px, calc(50% - 280px));
+    right: max(0px, calc(50% - 280px));
+    border-inline: 1px solid var(--border);
+    max-height: 80vh;
+  }
+
+  /* hover affordances (mouse only) */
+  .row-body:hover .row-title { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+  .cal-cell:hover { border-color: var(--border); }
+  .cal-cell.selected:hover { border-color: var(--ink); }
+
+  /* --- calendar: a real month view --- */
+  .cal-headbar { padding: 20px 20px 14px 28px; }
+  .cal-grid-wrap { padding: var(--s-3) 16px var(--s-4); }
+  .cal-grid { gap: 0; border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
+  .cal-weekdays { border: 0; }
+  .cal-wd { text-align: left; padding: 6px 8px; }
+  .cal-cell {
+    min-height: 112px;
+    align-items: stretch;
+    padding: 6px 6px 6px;
+    border: 0;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+    text-align: left;
+    overflow: hidden;
+  }
+  .cal-cell.selected { box-shadow: inset 0 0 0 2px var(--ink); border-color: var(--border); }
+  .cal-cell:hover { background: var(--bg-subtle); }
+  .cal-num { align-self: flex-start; }
+  .cal-marks { display: none; }
+  .cal-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .cal-line {
+    display: block;
+    font-size: 12px;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--ink);
+  }
+  .cal-line-sig { font-family: var(--font-mono); color: var(--ink-soft); margin-right: 4px; }
+  .cal-line-more { font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); }
+  .cal-cell.out .cal-lines { display: none; }
+  .cal-cell.overdue .cal-line-sig { color: var(--overdue); font-weight: 700; }
+
+  .cal-keys {
+    display: block;
+    padding: var(--s-2) 0 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--ink-soft);
+  }
+}

@@ -8,7 +8,7 @@
 // return [] for both, which rendered a connection error over a real "No
 // open tasks" state. One-time fallback reads the old bare-array key.
 // 4.3.3 — shown on the date line so "which version am I on?" is answerable at a glance.
-const APP_BUILD = "v4.4.0";
+const APP_BUILD = "v4.5.0";
 const CACHE_KEY = "tasks-cache-v2";
 const LEGACY_CACHE_KEY = "tasks-cache-v1";
 const CFG_KEY = "tasks-cfg-v1";
@@ -1673,6 +1673,44 @@ function initTabRouter() {
   }
   setActiveTab(initialTab);
 }
+
+// --- 4.5: keyboard (desktop) ------------------------------------------------
+// One listener, ignored while typing in a field or with a modifier held, so
+// it never steals a browser shortcut. Phones never fire these.
+//   1 / 2 / 3     Tasks / Calendar / CONCURSUS
+//   n             new task (Tasks capture bar)
+//   Calendar:     ← →  day · ↑ ↓  week · [ ]  month · t  today · e  add event
+//   Esc           closes the calendar's add-event sheet (the task sheet
+//                 already handles its own Esc)
+document.addEventListener("keydown", (e) => {
+  if (!getConfig() || e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target;
+  const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+  const calSheet = typeof NOTCH_CAL !== "undefined" && NOTCH_CAL.sheetOpen();
+  if (e.key === "Escape" && calSheet) { e.preventDefault(); NOTCH_CAL.closeSheet(); return; }
+  if (typing || editingTask || calSheet) return;
+
+  const tabKeys = { "1": "tasks", "2": "calendar", "3": "concursus" };
+  if (tabKeys[e.key]) { e.preventDefault(); setActiveTab(tabKeys[e.key]); return; }
+  if (e.key === "n") {
+    e.preventDefault();
+    if (activeTab !== "tasks") setActiveTab("tasks");
+    document.getElementById("new-title").focus();
+    return;
+  }
+  if (activeTab !== "calendar" || typeof NOTCH_CAL === "undefined") return;
+  const cal = {
+    ArrowLeft: () => NOTCH_CAL.moveDay(-1),
+    ArrowRight: () => NOTCH_CAL.moveDay(1),
+    ArrowUp: () => NOTCH_CAL.moveDay(-7),
+    ArrowDown: () => NOTCH_CAL.moveDay(7),
+    "[": () => NOTCH_CAL.prevMonth(),
+    "]": () => NOTCH_CAL.nextMonth(),
+    t: () => NOTCH_CAL.goToday(),
+    e: () => NOTCH_CAL.addEvent(),
+  };
+  if (cal[e.key]) { e.preventDefault(); cal[e.key](); }
+});
 
 // --- 4.0.3: the bottom stack is measured, never guessed --------------------
 // --nk-tabbar-h and --capture-h drove .capture's offset, main's padding and

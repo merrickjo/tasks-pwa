@@ -223,7 +223,9 @@
 // v47 -> v48: 4.3.4 agenda fetched from /api/agenda (blockers eat /api/events).
 // v48 -> v49: 4.4 CALENDAR tab (new calendar.js shell file, monthly log +
 // Google add-event); index.html, app.js, styles.css changed.
-const CACHE_NAME = "tasks-shell-v49";
+// v49 -> v50: 4.5 desktop layout for the full app + keyboard shortcuts;
+// desktop.html now redirects here, desktop.js/desktop.css removed.
+const CACHE_NAME = "tasks-shell-v50";
 const SHELL = [
   "./",
   "./index.html",
@@ -234,8 +236,6 @@ const SHELL = [
   "./calendar.js",
   "./manifest.json",
   "./desktop.html",
-  "./desktop.css",
-  "./desktop.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/apple-touch-icon.png",
