@@ -1021,7 +1021,12 @@ const NOTCH_JOURNAL = (function () {
   }
 
   // ---------- fast ink (Bigme, inside the APK) ----------
-  const NI = (typeof window !== "undefined" && window.NotchInk) || null;
+  // 4.6.3 KILL SWITCH — fast ink froze the screen on the real Bigme B10 and
+  // HiBreak (30 Oct). Off until it has been proven on the devices. With this
+  // false the page never touches the APK's pen bridge — not even to probe
+  // it — and Ink uses the web canvas, as in 4.6.0.
+  const FAST_INK = false;
+  const NI = (FAST_INK && typeof window !== "undefined" && window.NotchInk) || null;
   let nativeOn = false;        // the service is drawing the pen right now
   let nativeStatus = "";
   let nativeBroken = false;    // gave up for this session (watchdog)
