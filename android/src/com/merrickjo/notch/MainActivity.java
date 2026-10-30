@@ -58,7 +58,7 @@ public class MainActivity extends Activity implements BigmeInk.Sink {
         s.setTextZoom(100);               // the layout is measured; don't let system font scale break it
         s.setMediaPlaybackRequiresUserGesture(true);
         s.setSupportZoom(false);
-        s.setUserAgentString(s.getUserAgentString() + " NotchAndroid/1.1");
+        s.setUserAgentString(s.getUserAgentString() + " NotchAndroid/1.2");
         CookieManager.getInstance().setAcceptCookie(true);
 
         web.setWebChromeClient(new WebChromeClient());

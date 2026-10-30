@@ -70,6 +70,7 @@ final class BigmeInk {
     private volatile boolean eraserMode = false;
     private volatile int bL, bT, bR, bB;               // writing bounds, view px
     private volatile float baseWidth = 4f;             // px at full pressure
+    private volatile boolean inked = false;            // overlay holds ink not yet wiped
 
     // per-stroke state (binder thread only)
     private final Paint paint = new Paint();
@@ -154,6 +155,7 @@ final class BigmeInk {
             if (!sized) throw new IllegalStateException("canvas " + canvas.getWidth() + "x" + canvas.getHeight() + " for view " + w + "x" + h);
             // A reused buffer may hold another app's pixels: wipe before showing.
             canvas.drawColor(Color.WHITE, PorterDuff.Mode.SRC);
+            inked = false;
             mSetBlend.invoke(c, true);
             client = c; view = v; attachedW = w; attachedH = h;
             Log.i(TAG, "attached " + w + "x" + h);
@@ -196,10 +198,12 @@ final class BigmeInk {
     void setWidth(float px) { baseWidth = Math.max(1f, px); }
     void setEraser(boolean on) { eraserMode = on; }
 
-    /** Wipe native ink from the panel (the web canvas underneath already has it). */
+    /** Wipe native ink from the panel (the web canvas underneath already has it).
+     *  A wipe is a visible e-ink refresh, so it's skipped when nothing was drawn. */
     void clear() {
         Object c = client;
-        if (c == null) return;
+        if (c == null || !inked) return;
+        inked = false;
         try {
             Canvas canvas = (Canvas) mGetCanvas.invoke(c);
             if (canvas != null) canvas.drawColor(Color.WHITE, PorterDuff.Mode.SRC);
@@ -279,6 +283,7 @@ final class BigmeInk {
                     float w = widthFor(p);
                     paint.setStrokeWidth(w);
                     canvas.drawPoint(x, y, paint);
+                    inked = true;
                     int pad = (int) w + 2;
                     mInvalidate.invoke(c, new Rect((int) x - pad, (int) y - pad, (int) x + pad, (int) y + pad), MODE_HANDWRITE);
                 } catch (Throwable t) { Log.w(TAG, "down: " + t); }
@@ -306,6 +311,7 @@ final class BigmeInk {
                     float w = widthFor(p);
                     paint.setStrokeWidth(w);
                     canvas.drawLine(lastX, lastY, x, y, paint);
+                    inked = true;
                     int pad = (int) w + 2;
                     Rect seg = new Rect((int) Math.min(lastX, x) - pad, (int) Math.min(lastY, y) - pad,
                             (int) Math.max(lastX, x) + pad, (int) Math.max(lastY, y) + pad);

@@ -93,19 +93,27 @@ const NOTCH_CAL = (function () {
     const range = gridRange(viewYear, viewMonth);
     const c = cached(range);
     if (!force && c && Date.now() - c.fetchedAt < REFETCH_MS) return;
+    // 4.6.2 — on e-ink a rebuild is a visible full refresh: show "syncing…"
+    // by editing the kicker in place, and rebuild afterwards only if the
+    // month actually changed (or there was nothing on screen yet).
     loading = true;
-    render();
+    const before = c ? JSON.stringify(c.data) : null;
+    const prevError = loadError;
+    if (!c) render(); else setKicker();
+    let changed = !c;
     try {
       const data = await apiFetch(`/api/calendar?from=${range.from}&to=${range.to}`);
       writeCache(range, data);
       loadError = null;
+      changed = changed || JSON.stringify(data) !== before;
     } catch (e) {
       loadError = String((e && e.message) || e).replace("request failed: ", "HTTP ");
     } finally {
       loading = false;
+      if (loadError !== prevError) changed = true;
       // only repaint if the user is still looking at this month
       const now = gridRange(viewYear, viewMonth);
-      if (now.from === range.from) render();
+      if (now.from === range.from) { if (changed) render(); else setKicker(); }
     }
   }
 
@@ -144,13 +152,19 @@ const NOTCH_CAL = (function () {
     root.appendChild(body);
   }
 
+  function kickerText() {
+    return new Date().toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" }) + (loading ? " · syncing…" : "");
+  }
+  function setKicker() {
+    const k = root && root.querySelector(".cal-kicker");
+    if (k) k.textContent = kickerText();
+  }
+
   function buildHeader(today) {
     const bar = el("div", "cal-headbar");
     const row = el("div", "cal-headbar-row");
     const heading = el("div", "cal-heading");
-    heading.appendChild(el("div", "cal-kicker", new Date().toLocaleDateString(undefined, {
-      weekday: "long", month: "short", day: "numeric",
-    }) + (loading ? " · syncing…" : "")));
+    heading.appendChild(el("div", "cal-kicker", kickerText()));
     heading.appendChild(el("h1", "cal-title", `${MONTHS[viewMonth]} ${viewYear}`));
     row.appendChild(heading);
 
@@ -544,9 +558,15 @@ const NOTCH_CAL = (function () {
       viewYear = t.getFullYear();
       viewMonth = t.getMonth();
     }
-    render();
+    // 4.6.2 — re-entering the tab reuses the drawn month (a rebuild is a
+    // visible e-ink refresh); load() rebuilds only if the data changed.
+    // Tasks can change on the Tasks tab, so their marks are part of the check.
+    const sig = todayISO() + "|" + JSON.stringify(tasksByDate());
+    if (!root.firstChild || sig !== lastInitSig) render();
+    lastInitSig = sig;
     load();
   }
+  let lastInitSig = "";
   // Called on resume / after Google sign-in returns.
   function refresh(force) {
     if (!root) return;

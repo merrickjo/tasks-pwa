@@ -228,7 +228,8 @@
 // v50 -> v51: 4.6 JOURNAL tab (journal.js new); index.html, app.js,
 // calendar.js, styles.css, manifest.json changed.
 // v51 -> v52: 4.6.1 Bigme fast ink bridge (journal.js, app.js, styles.css).
-const CACHE_NAME = "tasks-shell-v52";
+// v52 -> v53: 4.6.2 one rebuild per change (journal.js, calendar.js, app.js).
+const CACHE_NAME = "tasks-shell-v53";
 const SHELL = [
   "./",
   "./index.html",

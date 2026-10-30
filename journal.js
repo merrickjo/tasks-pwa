@@ -39,6 +39,7 @@ const NOTCH_JOURNAL = (function () {
   const INDEX_KEY = "journal-index-v1";   // { "from|to": { fetchedAt, days, cc } }
   const FINGER_KEY = "journal-finger-v1"; // "1" when a finger may draw
   const VIEW_KEY = "journal-view-v1";     // session: { view, anchor }
+  const FACE_KEY = "journal-face-v1";     // last face used (type | ink): new pages open in it
   const CACHE_MAX = 24;
   const INDEX_MAX = 6;
   const REFETCH_MS = 60 * 1000;
@@ -144,8 +145,9 @@ const NOTCH_JOURNAL = (function () {
     return false;
   }
   function isDirty(r) { return !!(r && (r.dirtyText || Object.keys(r.dirtyInk || {}).length)); }
+  function lastFace() { try { return localStorage.getItem(FACE_KEY) === "ink" ? "ink" : "type"; } catch { return "type"; } }
   function blank(key) {
-    return { key, kind: { d: "day", w: "week", m: "month" }[key[0]], sections: {}, mode: "type", rev: 0, ink: [] };
+    return { key, kind: { d: "day", w: "week", m: "month" }[key[0]], sections: {}, mode: lastFace(), rev: 0, ink: [] };
   }
   function rec(key) {
     const c = all();
@@ -166,7 +168,10 @@ const NOTCH_JOURNAL = (function () {
       const res = await req("GET", enc(key));
       if (res.status !== 200 || !res.data) throw new Error("HTTP " + res.status);
       const s = res.data;
-      if (!r.dirtyText) { r.entry.sections = s.sections || {}; r.entry.rev = s.rev; r.base = { sections: { ...(s.sections || {}) } }; r.entry.mode = r.entry.mode && r.fetchedAt ? r.entry.mode : s.mode; }
+      // A page that doesn't exist on the server yet keeps the face it opened
+      // in (the last one used); an existing page brings its own.
+      const exists = s.rev > 0 || (s.ink || []).some((p) => p.strokes && p.strokes.length);
+      if (!r.dirtyText) { r.entry.sections = s.sections || {}; r.entry.rev = s.rev; r.base = { sections: { ...(s.sections || {}) } }; if (exists && !r.fetchedAt) r.entry.mode = s.mode; }
       (s.ink || []).forEach((sp) => {
         if (r.dirtyInk[sp.page]) return; // our flush will merge
         const lp = inkPage(r, sp.page);
@@ -185,6 +190,7 @@ const NOTCH_JOURNAL = (function () {
     const r = rec(key);
     r.dirtyText = true;
     persist();
+    noteShown(key);
     setStatus("editing…");
     clearTimeout(timers["text:" + key]);
     timers["text:" + key] = setTimeout(() => flushText(key), TEXT_DEBOUNCE);
@@ -241,6 +247,7 @@ const NOTCH_JOURNAL = (function () {
     const r = rec(key);
     r.dirtyInk[page] = true;
     persist();
+    noteShown(key);
     clearTimeout(timers[`ink:${key}:${page}`]);
     timers[`ink:${key}:${page}`] = setTimeout(() => flushInk(key, page), INK_DEBOUNCE);
   }
@@ -307,6 +314,36 @@ const NOTCH_JOURNAL = (function () {
     keys.slice(INDEX_MAX).forEach((k) => delete idx[k]);
     try { localStorage.setItem(INDEX_KEY, JSON.stringify(idx)); } catch {}
   }
+  // 4.6.2 — warm the cache for the spreads one tap away (this day's week and
+  // month, and the days either side), so switching Month / Week / Day or
+  // flipping a day draws once from cache instead of drawing, then redrawing
+  // when the network answers. Quiet: no renders, no status changes.
+  let prefetchedFor = "";
+  async function prefetchAround() {
+    const tag = view + "|" + anchor;
+    if (prefetchedFor === tag || !getConfig()) return;
+    prefetchedFor = tag;
+    const keys = [keyFor("day", anchor), keyFor("week", anchor), keyFor("month", anchor),
+      keyFor("day", addDays(anchor, 1)), keyFor("day", addDays(anchor, -1))];
+    for (const k of keys) if (k !== currentKey()) await fetchEntry(k).catch(() => {});
+    const saved = view;
+    for (const v of ["day", "week", "month"]) {
+      if (v === saved) continue;
+      view = v;
+      const range = rangeFor();
+      view = saved;
+      const c = cachedIndex(range);
+      if (c && Date.now() - c.fetchedAt < REFETCH_MS) continue;
+      try {
+        const [j, cc] = await Promise.all([
+          v === "day" ? Promise.resolve({ status: 200, data: { days: {} } }) : req("GET", `/api/journal?from=${range.from}&to=${range.to}`),
+          req("GET", `/api/concursus?from=${range.from}&to=${range.to}`),
+        ]);
+        if (j.status === 200 && cc.status === 200) writeIndex(range, { days: j.data.days || {}, cc: cc.data.days || {} });
+      } catch {}
+    }
+  }
+
   async function loadIndex(force) {
     const range = rangeFor();
     const c = cachedIndex(range);
@@ -387,14 +424,36 @@ const NOTCH_JOURNAL = (function () {
   function isOpen(key) { return root && root.style.display !== "none" && currentKey() === key; }
   function currentKey() { return keyFor(view, anchor); }
   let renderQueued = false;
+  // 4.6.2 — on e-ink every DOM rebuild is a full panel refresh you can see,
+  // so a background sync that brings nothing new must not rebuild. The
+  // signature covers everything a spread displays; renderSoon() only
+  // rebuilds when it changed. Edits made on this page are already on screen,
+  // so they move the baseline instead of triggering a rebuild.
+  let lastSig = "";
+  function hashStr(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return h; }
+  function viewSig() {
+    const key = currentKey();
+    const r = all()[key];
+    const e = r ? r.entry : blank(key);
+    const range = rangeFor();
+    const idx = view === "day" ? null : cachedIndex(range);
+    const inkIds = (e.ink || []).map((p) => p.page + ":" + hashStr(p.strokes.map((x) => x.id).join(","))).join("|");
+    return [key, view, anchor, e.mode, tool, fingerInk, todayISO(),
+      hashStr(JSON.stringify(e.sections || {})), inkIds,
+      idx ? hashStr(JSON.stringify(idx.days || {})) : "",
+      hashStr(JSON.stringify(concursusFor(range)))].join("§");
+  }
+  function noteShown(key) { if (root && key === currentKey()) lastSig = viewSig(); }
   function renderSoon() {
     if (renderQueued) return;
     renderQueued = true;
     requestAnimationFrame(() => {
       renderQueued = false;
+      if (!root || root.style.display === "none") return;
       // Don't yank a textarea out from under the cursor.
       const a = document.activeElement;
-      if (a && root && root.contains(a) && a.tagName === "TEXTAREA") return;
+      if (a && root.contains(a) && (a.tagName === "TEXTAREA" || a.tagName === "INPUT")) return;
+      if (viewSig() === lastSig) return;
       render();
     });
   }
@@ -402,7 +461,7 @@ const NOTCH_JOURNAL = (function () {
   // ---------- render ----------
   function render() {
     if (!root) return;
-    nativeStop();
+    lastSig = viewSig();
     canvases.length = 0;
     const key = currentKey();
     const r = rec(key);
@@ -415,6 +474,7 @@ const NOTCH_JOURNAL = (function () {
     else body.appendChild(buildMonth(key, r));
     root.appendChild(body);
     if (r.entry.mode === "ink") requestAnimationFrame(() => { canvases.forEach((c) => c.resize()); nativeStart(); });
+    else nativeStop();
   }
 
   function titleFor() {
@@ -479,6 +539,7 @@ const NOTCH_JOURNAL = (function () {
     const r = rec(key);
     if (r.entry.mode === m) return;
     r.entry.mode = m;
+    try { localStorage.setItem(FACE_KEY, m); } catch {}
     persist();
     render();
     // The face you last used is remembered per page, on every device.
@@ -748,13 +809,24 @@ const NOTCH_JOURNAL = (function () {
   function buildInk(key, r) {
     const wrap = el("div", "jn-ink");
     const tools = el("div", "jn-tools");
-    const pen = button("jn-tool" + (tool === "pen" ? " active" : ""), "Pen", "Pen", () => { tool = "pen"; render(); });
-    const eraser = button("jn-tool" + (tool === "eraser" ? " active" : ""), "Eraser", "Eraser", () => { tool = "eraser"; render(); });
+    // Tool switches flip the highlight in place — a rebuild would cost a
+    // full e-ink refresh (and redraw every stroke) for one word changing.
+    const setTool = (t) => {
+      tool = t;
+      pen.classList.toggle("active", t === "pen");
+      eraser.classList.toggle("active", t === "eraser");
+      if (nativeOn) { try { NI.eraser(t === "eraser"); } catch {} }
+      noteShown(currentKey());
+    };
+    const pen = button("jn-tool" + (tool === "pen" ? " active" : ""), "Pen", "Pen", () => setTool("pen"));
+    const eraser = button("jn-tool" + (tool === "eraser" ? " active" : ""), "Eraser", "Eraser", () => setTool("eraser"));
     const undo = button("jn-tool", "Undo", "Undo last stroke", () => undoLast());
     const finger = button("jn-tool" + (fingerInk ? " active" : ""), fingerInk ? "Finger draws" : "Finger scrolls", "Toggle finger drawing", () => {
       fingerInk = !fingerInk;
       try { localStorage.setItem(FINGER_KEY, fingerInk ? "1" : "0"); } catch {}
-      render();
+      finger.classList.toggle("active", fingerInk);
+      finger.textContent = fingerInk ? "Finger draws" : "Finger scrolls";
+      noteShown(currentKey());
     });
     [pen, eraser, undo, finger].forEach((b) => tools.appendChild(b));
     if (NI) tools.appendChild(el("span", "jn-engine", engineLabel()));
@@ -954,11 +1026,14 @@ const NOTCH_JOURNAL = (function () {
   let nativeStatus = "";
   let nativeBroken = false;    // gave up for this session (watchdog)
   let lastNativeStroke = 0;
+  let engineCache = null;      // NotchInk.engine() is a synchronous bridge call: ask once
+  let nativeKey = null;        // page the service's ink belongs to
   let scrollTimer = null;
   let scrolling = false;
   function nativeEngine() {
     if (!NI || nativeBroken) return false;
-    try { return NI.engine() === "bigme"; } catch { return false; }
+    if (engineCache === null) { try { engineCache = NI.engine() === "bigme"; } catch { engineCache = false; } }
+    return engineCache;
   }
   function engineLabel() {
     if (nativeBroken) return "Standard ink · fast ink off";
@@ -996,10 +1071,20 @@ const NOTCH_JOURNAL = (function () {
     if (!nativeEngine()) { paintLabel(); return; }
     const g = inkGeometry();
     if (!g) { nativeStop(); return; }
+    const key = currentKey();
     try {
       NI.eraser(tool === "eraser");
-      NI.start(g.l, g.t, g.r, g.b, g.width);
-      nativeOn = true;
+      if (nativeOn) {
+        // Already writing: just re-aim. Wipe only when the page changed —
+        // the previous page's ink must not linger on the panel.
+        NI.bounds(g.l, g.t, g.r, g.b);
+        NI.width(g.width);
+        if (nativeKey !== key) NI.clear();
+      } else {
+        NI.start(g.l, g.t, g.r, g.b, g.width);
+        nativeOn = true;
+      }
+      nativeKey = key;
     } catch { nativeOn = false; }
     paintLabel();
   }
@@ -1007,6 +1092,7 @@ const NOTCH_JOURNAL = (function () {
     if (!NI) return;
     if (nativeOn) { try { NI.stop(); } catch {} }
     nativeOn = false;
+    nativeKey = null;
   }
   // After the web canvas has painted a change (undo, erase), drop the
   // service's copy of the ink so the panel shows the page as it now is.
@@ -1055,7 +1141,14 @@ const NOTCH_JOURNAL = (function () {
   }
   if (typeof window !== "undefined") {
     window.__notchInk = {
-      state(s) { nativeStatus = (s && s.status) || ""; nativeOn = !!(s && s.active); paintLabel(); },
+      state(s) {
+        nativeStatus = (s && s.status) || "";
+        // A failed start (or the service dropping us on rotation) turns fast
+        // ink off; a late "stopped" echo from an earlier stop() must not.
+        if (s && !s.active && nativeStatus !== "idle") { nativeOn = false; nativeKey = null; }
+        if (s && !s.active && nativeStatus === "idle" && !nativeOn) nativeKey = null;
+        paintLabel();
+      },
       stroke(kind, flat) { try { nativeStroke(kind, flat); } catch (e) { console.warn("native stroke", e); } },
     };
     // The service's ink is pinned to the screen, the page isn't: wipe it the
@@ -1075,13 +1168,23 @@ const NOTCH_JOURNAL = (function () {
 
   // ---------- navigation ----------
   function saveViewState() { try { sessionStorage.setItem(VIEW_KEY, JSON.stringify({ view, anchor })); } catch {} }
+  // An untouched page (nothing typed, nothing inked, nothing pending) opens in
+  // the face used last, whatever face it had when it was cached.
+  function adoptFace() {
+    const r = rec(currentKey());
+    const e = r.entry;
+    const empty = !isDirty(r) && !Object.values(e.sections || {}).some((t) => (t || "").trim())
+      && !(e.ink || []).some((p) => p.strokes && p.strokes.length);
+    if (empty) e.mode = lastFace();
+  }
   function go(v, date) {
     view = v; anchor = date;
     saveViewState();
+    adoptFace();
     undoStack.length = 0;
     render();
     fetchEntry(currentKey()).then(() => { if (!isDirtyNow()) renderSoon(); });
-    loadIndex();
+    loadIndex().then(() => setTimeout(prefetchAround, 300));
     window.scrollTo(0, 0);
   }
   function isDirtyNow() { return isDirty(rec(currentKey())); }
@@ -1119,9 +1222,12 @@ const NOTCH_JOURNAL = (function () {
       });
       if (typeof CONCURSUS !== "undefined") CONCURSUS.subscribe(() => { pushConcursus(); if (root && root.style.display !== "none" && !isDirtyNow()) renderSoon(); });
     }
-    render();
+    // Coming back to the tab: the page is still in the DOM — reuse it unless
+    // something it shows changed while away (4.6.2).
+    if (!root.firstChild || viewSig() !== lastSig) render();
+    else if (canvases.length) requestAnimationFrame(nativeStart);
     fetchEntry(currentKey()).then(() => renderSoon());
-    loadIndex();
+    loadIndex().then(() => setTimeout(prefetchAround, 300));
     flushAll();
     pushConcursus();
   }
