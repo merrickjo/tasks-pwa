@@ -261,7 +261,16 @@ const NOTCH_CAL = (function () {
     const label = el("div", "section-label cal-day-label");
     const rel = selected === today ? "TODAY · " : selected === addDays(today, 1) ? "TOMORROW · " : "";
     label.appendChild(el("span", null, rel + d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }).toUpperCase()));
-    label.appendChild(button("cal-add-btn", "+ EVENT", "Add an event on this day", () => openSheet()));
+    // 4.6 — the day's journal page is one tap away (the monthly log points
+    // at the daily log, as on paper).
+    const acts = el("span", "cal-day-acts");
+    acts.appendChild(button("cal-add-btn", "LOG ›", "Open this day's journal page", () => {
+      if (typeof NOTCH_JOURNAL === "undefined") return;
+      NOTCH_JOURNAL.openDay(selected);
+      setActiveTab("journal");
+    }));
+    acts.appendChild(button("cal-add-btn", "+ EVENT", "Add an event on this day", () => openSheet()));
+    label.appendChild(acts);
     box.appendChild(label);
 
     const evs = eventsFor(data, selected);

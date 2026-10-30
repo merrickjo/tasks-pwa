@@ -225,7 +225,9 @@
 // Google add-event); index.html, app.js, styles.css changed.
 // v49 -> v50: 4.5 desktop layout for the full app + keyboard shortcuts;
 // desktop.html now redirects here, desktop.js/desktop.css removed.
-const CACHE_NAME = "tasks-shell-v50";
+// v50 -> v51: 4.6 JOURNAL tab (journal.js new); index.html, app.js,
+// calendar.js, styles.css, manifest.json changed.
+const CACHE_NAME = "tasks-shell-v51";
 const SHELL = [
   "./",
   "./index.html",
@@ -234,6 +236,7 @@ const SHELL = [
   "./app.js",
   "./concursus.js",
   "./calendar.js",
+  "./journal.js",
   "./manifest.json",
   "./desktop.html",
   "./icons/icon-192.png",

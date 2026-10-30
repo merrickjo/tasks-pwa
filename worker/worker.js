@@ -1,5 +1,8 @@
 // Tasks API — Cloudflare Worker + D1
 //
+// v11 (30 Oct 2026): + journal — /api/journal (range index), /api/journal/:key
+//   (page get/put, optimistic rev), /api/journal/:key/ink/:page (handwriting),
+//   /api/concursus (durable CONCURSUS history), /api/sync/journal (Mac mirror).
 // v10 (21 Oct 2026): + Google Calendar — /api/calendar (month range,
 //   Outlook mirror + live Google), /api/calendar/events (add/delete in
 //   Google), /api/google/* (connect/status/disconnect), and the OAuth
@@ -250,6 +253,201 @@ async function upsertForSync(env, id, t) {
 async function deleteForSync(env, id) {
   const res = await env.DB.prepare(`DELETE FROM tasks WHERE id = ?1`).bind(id).run();
   return res.meta.changes;
+}
+
+// ── Journal (v11, 30 Oct 2026) ─────────────────────────────────────────────
+// Bullet journal pages + handwriting + durable CONCURSUS history. See
+// schema.sql for the row shapes. Writes are optimistic: the client sends the
+// rev it started from; a stale rev gets 409 and the current row so the
+// client can merge (ink: union of strokes by id; text: per section).
+const JKEY_RE = /^(d:\d{4}-\d{2}-\d{2}|w:\d{4}-W\d{2}|m:\d{4}-\d{2})$/;
+const SECTION_ID_RE = /^[a-z0-9_-]{1,32}$/;
+const MAX_SECTIONS_BYTES = 200 * 1024;
+const MAX_INK_BYTES = 1536 * 1024;
+const MAX_INK_PAGES = 12;
+const KIND_OF = { d: "day", w: "week", m: "month" };
+
+function emptyEntry(key) {
+  return { key, kind: KIND_OF[key[0]], sections: {}, mode: "type", rev: 0, updated_at: null, ink: [] };
+}
+function rowToEntry(r) {
+  let sections = {};
+  try { sections = JSON.parse(r.sections) || {}; } catch {}
+  return { key: r.key, kind: r.kind, sections, mode: r.mode, rev: r.rev, updated_at: r.updated_at };
+}
+function rowToInk(r) {
+  let strokes = [];
+  try { strokes = JSON.parse(r.strokes) || []; } catch {}
+  return { page: r.page, strokes, rev: r.rev, updated_at: r.updated_at };
+}
+
+function validateSections(input) {
+  const sec = input && input.sections;
+  if (!sec || typeof sec !== "object" || Array.isArray(sec)) throw validationError("sections", "sections must be an object");
+  const keys = Object.keys(sec);
+  if (keys.length > 60) throw validationError("sections", "too many sections");
+  for (const k of keys) {
+    if (!SECTION_ID_RE.test(k)) throw validationError("sections", "bad section id: " + k);
+    if (typeof sec[k] !== "string") throw validationError("sections", "section " + k + " must be a string");
+  }
+  const raw = JSON.stringify(sec);
+  if (raw.length > MAX_SECTIONS_BYTES) throw validationError("sections", "journal page text is over 200 KB");
+  const mode = input.mode === "ink" ? "ink" : "type";
+  const base = Number.isInteger(input.base_rev) ? input.base_rev : -1;
+  return { raw, mode, base };
+}
+function validateInk(input) {
+  const st = input && input.strokes;
+  if (!Array.isArray(st)) throw validationError("strokes", "strokes must be an array");
+  for (const s of st) {
+    if (!s || typeof s.id !== "string" || s.id.length > 24 || !Array.isArray(s.p) || typeof s.w !== "number") {
+      throw validationError("strokes", "each stroke needs id, w and p");
+    }
+  }
+  const raw = JSON.stringify(st);
+  if (raw.length > MAX_INK_BYTES) throw validationError("strokes", "ink page is over 1.5 MB — add a new page");
+  const base = Number.isInteger(input.base_rev) ? input.base_rev : -1;
+  return { raw, base };
+}
+
+async function getJournal(env, key) {
+  const r = await env.DB.prepare(`SELECT * FROM journal WHERE key = ?1`).bind(key).first();
+  const entry = r ? rowToEntry(r) : emptyEntry(key);
+  const { results } = await env.DB.prepare(`SELECT * FROM journal_ink WHERE key = ?1 ORDER BY page`).bind(key).all();
+  entry.ink = results.map(rowToInk);
+  return entry;
+}
+async function putJournal(env, key, input) {
+  const v = validateSections(input);
+  const cur = await env.DB.prepare(`SELECT rev FROM journal WHERE key = ?1`).bind(key).first();
+  const curRev = cur ? cur.rev : 0;
+  if (v.base !== curRev) return { conflict: true, entry: await getJournal(env, key) };
+  const now = new Date().toISOString();
+  // Guarded write: the WHERE rev check makes a race between two devices
+  // lose cleanly (0 changes → conflict) instead of silently overwriting.
+  let res;
+  if (!cur) {
+    res = await env.DB.prepare(
+      `INSERT OR IGNORE INTO journal (key, kind, sections, mode, rev, updated_at) VALUES (?1, ?2, ?3, ?4, 1, ?5)`
+    ).bind(key, KIND_OF[key[0]], v.raw, v.mode, now).run();
+  } else {
+    res = await env.DB.prepare(
+      `UPDATE journal SET sections = ?2, mode = ?3, rev = rev + 1, updated_at = ?4 WHERE key = ?1 AND rev = ?5`
+    ).bind(key, v.raw, v.mode, now, curRev).run();
+  }
+  if (!res.meta.changes) return { conflict: true, entry: await getJournal(env, key) };
+  return { entry: await getJournal(env, key) };
+}
+async function putInk(env, key, page, input) {
+  const v = validateInk(input);
+  const cur = await env.DB.prepare(`SELECT rev FROM journal_ink WHERE key = ?1 AND page = ?2`).bind(key, page).first();
+  const curRev = cur ? cur.rev : 0;
+  const pageNow = async () => {
+    const r = await env.DB.prepare(`SELECT * FROM journal_ink WHERE key = ?1 AND page = ?2`).bind(key, page).first();
+    return r ? rowToInk(r) : { page, strokes: [], rev: 0, updated_at: null };
+  };
+  if (v.base !== curRev) return { conflict: true, page: await pageNow() };
+  const now = new Date().toISOString();
+  let res;
+  if (!cur) {
+    res = await env.DB.prepare(
+      `INSERT OR IGNORE INTO journal_ink (key, page, strokes, rev, updated_at) VALUES (?1, ?2, ?3, 1, ?4)`
+    ).bind(key, page, v.raw, now).run();
+  } else {
+    res = await env.DB.prepare(
+      `UPDATE journal_ink SET strokes = ?3, rev = rev + 1, updated_at = ?4 WHERE key = ?1 AND page = ?2 AND rev = ?5`
+    ).bind(key, page, v.raw, now, curRev).run();
+  }
+  if (!res.meta.changes) return { conflict: true, page: await pageNow() };
+  // The page row's own clock moves; touch the entry so "updated since"
+  // sync (the Mac mirror) sees the page changed.
+  await env.DB.prepare(
+    `INSERT INTO journal (key, kind, sections, mode, rev, updated_at) VALUES (?1, ?2, '{}', 'ink', 0, ?3)
+     ON CONFLICT(key) DO UPDATE SET updated_at = excluded.updated_at`
+  ).bind(key, KIND_OF[key[0]], now).run();
+  return { page: await pageNow() };
+}
+// Overview for a date range: which day pages have text / ink, so the
+// monthly and weekly spreads can mark them without loading every page.
+async function journalIndex(env, from, to) {
+  const { results: rows } = await env.DB.prepare(
+    `SELECT key, sections FROM journal WHERE key >= ?1 AND key <= ?2`
+  ).bind("d:" + from, "d:" + to).all();
+  const { results: inks } = await env.DB.prepare(
+    `SELECT key, SUM(LENGTH(strokes) > 2) AS pages FROM journal_ink WHERE key >= ?1 AND key <= ?2 GROUP BY key`
+  ).bind("d:" + from, "d:" + to).all();
+  const out = {};
+  for (const r of rows) {
+    let sec = {};
+    try { sec = JSON.parse(r.sections) || {}; } catch {}
+    const text = Object.values(sec).join("\n");
+    const first = text.split("\n").map((l) => l.trim()).find((l) => l) || "";
+    out[r.key.slice(2)] = { text: !!text.trim(), first: first.slice(0, 120), ink: 0 };
+  }
+  for (const i of inks) {
+    const d = i.key.slice(2);
+    out[d] = out[d] || { text: false, first: "", ink: 0 };
+    out[d].ink = i.pages || 0;
+  }
+  return out;
+}
+
+const CC_DOMAINS_RE = /^[a-z]{1,16}$/;
+function validateConcursus(input) {
+  const days = input && input.days;
+  if (!days || typeof days !== "object" || Array.isArray(days)) throw validationError("days", "days must be an object");
+  const out = [];
+  for (const [date, s] of Object.entries(days).slice(0, 400)) {
+    if (!DATE_RE.test(date) || !s || typeof s !== "object") continue;
+    if (!(Number.isInteger(s.roll) && s.roll >= 1 && s.roll <= 20)) continue;
+    if (!s.done || typeof s.done !== "object") continue;
+    const done = {};
+    for (const [k, v] of Object.entries(s.done)) if (CC_DOMAINS_RE.test(k) && typeof v === "boolean") done[k] = v;
+    const at = typeof s.at === "string" && s.at ? s.at.slice(0, 40) : new Date().toISOString();
+    const fp = ["T", "B", "E"].includes(s.familyPerson) ? s.familyPerson : null;
+    out.push([date, s.roll, JSON.stringify(done), fp, s.notch ? 1 : 0, at]);
+  }
+  return out;
+}
+async function upsertConcursus(env, rows) {
+  if (!rows.length) return 0;
+  await env.DB.batch(rows.map((r) => env.DB.prepare(
+    `INSERT INTO concursus_days (date, roll, done, family_person, notch, at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+     ON CONFLICT(date) DO UPDATE SET roll = excluded.roll, done = excluded.done,
+       family_person = excluded.family_person, notch = excluded.notch, at = excluded.at
+     WHERE excluded.at > concursus_days.at`
+  ).bind(...r)));
+  return rows.length;
+}
+async function listConcursus(env, from, to) {
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM concursus_days WHERE date >= ?1 AND date <= ?2 ORDER BY date`
+  ).bind(from, to).all();
+  const out = {};
+  for (const r of results) {
+    let done = {};
+    try { done = JSON.parse(r.done) || {}; } catch {}
+    out[r.date] = { roll: r.roll, done, familyPerson: r.family_person, notch: !!r.notch, at: r.at };
+  }
+  return out;
+}
+// The Mac mirror's feed: every page touched since `since`, ink included.
+async function journalSince(env, since) {
+  const { results } = await env.DB.prepare(
+    `SELECT key FROM journal WHERE updated_at > ?1 ORDER BY updated_at LIMIT 200`
+  ).bind(since).all();
+  const entries = [];
+  for (const r of results) entries.push(await getJournal(env, r.key));
+  return entries;
+}
+function plainRange(url) {
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+  if (!DATE_RE.test(from || "") || !DATE_RE.test(to || "") || from > to) {
+    throw validationError("from", "from and to must be YYYY-MM-DD with from <= to");
+  }
+  if ((Date.parse(to) - Date.parse(from)) / 86400000 > 400) throw validationError("to", "range is limited to 400 days");
+  return { from, to };
 }
 
 // ── Google Calendar (v10, 21 Oct 2026) ─────────────────────────────────────
@@ -648,6 +846,52 @@ export async function handle(request, env) {
         if (e.isValidation) return json({ error: e.message, field: e.field }, 400, env);
         throw e;
       }
+    }
+    // ── v11 journal ──
+    if (parts[0] === "api" && parts[1] === "journal" && !parts[2] && request.method === "GET") {
+      let range;
+      try { range = plainRange(url); }
+      catch (e) { if (e.isValidation) return json({ error: e.message, field: e.field }, 400, env); throw e; }
+      return json({ days: await journalIndex(env, range.from, range.to) }, 200, env);
+    }
+    if (parts[0] === "api" && parts[1] === "journal" && parts[2]) {
+      const key = decodeURIComponent(parts[2]);
+      if (!JKEY_RE.test(key)) return json({ error: "bad journal key", field: "key" }, 400, env);
+      if (!parts[3] && request.method === "GET") return json(await getJournal(env, key), 200, env);
+      if (!parts[3] && request.method === "PUT") {
+        const input = await readJson(request);
+        if (input === undefined) return json({ error: "body must be valid JSON", field: "body" }, 400, env);
+        try {
+          const r = await putJournal(env, key, input);
+          return json(r.entry, r.conflict ? 409 : 200, env);
+        } catch (e) { if (e.isValidation) return json({ error: e.message, field: e.field }, 400, env); throw e; }
+      }
+      if (parts[3] === "ink" && parts[4] !== undefined && !parts[5] && request.method === "PUT") {
+        const page = parseInt(parts[4], 10);
+        if (!(page >= 0 && page < MAX_INK_PAGES) || String(page) !== parts[4]) return json({ error: "bad page", field: "page" }, 400, env);
+        const input = await readJson(request);
+        if (input === undefined) return json({ error: "body must be valid JSON", field: "body" }, 400, env);
+        try {
+          const r = await putInk(env, key, page, input);
+          return json(r.page, r.conflict ? 409 : 200, env);
+        } catch (e) { if (e.isValidation) return json({ error: e.message, field: e.field }, 400, env); throw e; }
+      }
+    }
+    if (parts[0] === "api" && parts[1] === "concursus" && !parts[2] && request.method === "GET") {
+      let range;
+      try { range = plainRange(url); }
+      catch (e) { if (e.isValidation) return json({ error: e.message, field: e.field }, 400, env); throw e; }
+      return json({ days: await listConcursus(env, range.from, range.to) }, 200, env);
+    }
+    if (parts[0] === "api" && parts[1] === "concursus" && !parts[2] && request.method === "PUT") {
+      const input = await readJson(request);
+      if (input === undefined) return json({ error: "body must be valid JSON", field: "body" }, 400, env);
+      try { return json({ ok: true, stored: await upsertConcursus(env, validateConcursus(input)) }, 200, env); }
+      catch (e) { if (e.isValidation) return json({ error: e.message, field: e.field }, 400, env); throw e; }
+    }
+    if (parts[0] === "api" && parts[1] === "sync" && parts[2] === "journal" && !parts[3] && request.method === "GET") {
+      const since = url.searchParams.get("since") || "";
+      return json({ entries: await journalSince(env, since) }, 200, env);
     }
     return json({ error: "not found" }, 404, env);
   } catch (e) {

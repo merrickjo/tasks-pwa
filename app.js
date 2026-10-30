@@ -1,6 +1,7 @@
 // Tasks PWA — app logic
-// Talks to a Cloudflare Worker proxy (see /worker), never to Notion directly
-// (Notion's API has no browser CORS support, so something has to sit in between).
+// Talks to the Cloudflare Worker (see /worker), which holds every credential.
+// Tasks live in D1 and are mirrored to the Obsidian vault (Notch/Tasks) by the
+// Mac sync job; Notion was retired 28 Sep 2026.
 
 // BUG-05: cache shape carries syncedAt metadata alongside tasks, so an
 // offline boot can tell "legitimately empty synced list" (metadata present,
@@ -8,7 +9,7 @@
 // return [] for both, which rendered a connection error over a real "No
 // open tasks" state. One-time fallback reads the old bare-array key.
 // 4.3.3 — shown on the date line so "which version am I on?" is answerable at a glance.
-const APP_BUILD = "v4.5.0";
+const APP_BUILD = "v4.6.0";
 const CACHE_KEY = "tasks-cache-v2";
 const LEGACY_CACHE_KEY = "tasks-cache-v1";
 const CFG_KEY = "tasks-cfg-v1";
@@ -1481,6 +1482,10 @@ async function boot() {
   if (hasCacheMetadata()) render(cached);
 
   refreshAgenda(); // 4.3 — parallel, never awaited
+  // 4.6 — CONCURSUS history and any offline journal edits go up on every
+  // boot, even when the JOURNAL tab is never opened on this device. The
+  // timeout lets journal.js (loaded after this file) finish defining itself.
+  setTimeout(() => { if (typeof NOTCH_JOURNAL !== "undefined") NOTCH_JOURNAL.background(); }, 1500);
 
   try {
     const { tasks } = await apiFetch("/api/tasks");
@@ -1497,7 +1502,7 @@ async function boot() {
       document.getElementById("offline-banner").classList.add("show");
     } else {
       // Phase 3 req 11 -- CONCURSUS is pure localStorage and works fully
-      // offline even on a first-ever launch with zero synced Notion cache.
+      // offline even on a first-ever launch with zero synced task cache.
       // Render its ring/group before the "can't reach server" message
       // instead of overwriting #list wholesale, which used to hide it.
       renderMandateRing();
@@ -1537,6 +1542,7 @@ document.addEventListener("visibilitychange", () => {
   if (getConfig() && Date.now() - agendaFetchedAt > AGENDA_REFETCH_MS) refreshAgenda();
   // 4.4 — the calendar tab refreshes itself on resume (its own 5-min throttle).
   if (getConfig() && activeTab === "calendar" && typeof NOTCH_CAL !== "undefined") NOTCH_CAL.refresh();
+  if (getConfig() && activeTab === "journal" && typeof NOTCH_JOURNAL !== "undefined") NOTCH_JOURNAL.refresh();
   const all = sortTasks(getCache());
 
   const concursusDateStale =
@@ -1578,7 +1584,7 @@ renderMandateRing = function () {
 // tab is recorded for the current session (sessionStorage, not localStorage
 // — a fresh app open should default back to Tasks).
 const TAB_SESSION_KEY = "app-tab-v1";
-const VALID_TABS = ["tasks", "calendar", "concursus"];
+const VALID_TABS = ["tasks", "calendar", "journal", "concursus"];
 let activeTab = "tasks";
 
 function setActiveTab(tab) {
@@ -1587,6 +1593,7 @@ function setActiveTab(tab) {
   const appEl = document.getElementById("app");
   const ccEl = document.getElementById("concursus-view");
   const calEl = document.getElementById("calendar-view");
+  const jnEl = document.getElementById("journal-view");
   const tabbarEl = document.getElementById("tabbar");
 
   tabbarEl.querySelectorAll(".tab-btn").forEach((btn) => {
@@ -1598,9 +1605,12 @@ function setActiveTab(tab) {
   // 4.4 — like CONCURSUS, the calendar has no capture bar, so the scrim
   // only needs nav-pill clearance (see .bottom-scrim in styles.css).
   document.body.classList.toggle("calendar-active", tab === "calendar");
+  // 4.6 — the journal has no capture bar either; same scrim rule.
+  document.body.classList.toggle("journal-active", tab === "journal");
   appEl.style.display = tab === "tasks" ? "block" : "none";
   ccEl.style.display = tab === "concursus" ? "block" : "none";
   calEl.style.display = tab === "calendar" ? "block" : "none";
+  jnEl.style.display = tab === "journal" ? "block" : "none";
 
   try { sessionStorage.setItem(TAB_SESSION_KEY, tab); } catch { /* non-fatal */ }
 
@@ -1608,6 +1618,8 @@ function setActiveTab(tab) {
     CONCURSUS.init(ccEl); // idempotent — safe to call on every switch
   } else if (tab === "calendar") {
     NOTCH_CAL.init(calEl); // idempotent — re-renders from cache, refetches if stale
+  } else if (tab === "journal") {
+    NOTCH_JOURNAL.init(jnEl); // idempotent — renders from cache, syncs in the background
   } else {
     // "Returning to Tasks triggers one Tasks render" (Phase 1 req 5) —
     // reuse the same cache-driven re-render the visibilitychange handler
@@ -1677,7 +1689,8 @@ function initTabRouter() {
 // --- 4.5: keyboard (desktop) ------------------------------------------------
 // One listener, ignored while typing in a field or with a modifier held, so
 // it never steals a browser shortcut. Phones never fire these.
-//   1 / 2 / 3     Tasks / Calendar / CONCURSUS
+//   1 / 2 / 3 / 4 Tasks / Calendar / Journal / CONCURSUS (4.6: follows the bar)
+//   Journal:      [ ]  previous / next spread · t  today · m w d  month/week/day
 //   n             new task (Tasks capture bar)
 //   Calendar:     ← →  day · ↑ ↓  week · [ ]  month · t  today · e  add event
 //   Esc           closes the calendar's add-event sheet (the task sheet
@@ -1690,12 +1703,24 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && calSheet) { e.preventDefault(); NOTCH_CAL.closeSheet(); return; }
   if (typing || editingTask || calSheet) return;
 
-  const tabKeys = { "1": "tasks", "2": "calendar", "3": "concursus" };
+  const tabKeys = { "1": "tasks", "2": "calendar", "3": "journal", "4": "concursus" };
   if (tabKeys[e.key]) { e.preventDefault(); setActiveTab(tabKeys[e.key]); return; }
   if (e.key === "n") {
     e.preventDefault();
     if (activeTab !== "tasks") setActiveTab("tasks");
     document.getElementById("new-title").focus();
+    return;
+  }
+  if (activeTab === "journal" && typeof NOTCH_JOURNAL !== "undefined") {
+    const jn = {
+      "[": () => NOTCH_JOURNAL.prev(),
+      "]": () => NOTCH_JOURNAL.next(),
+      t: () => NOTCH_JOURNAL.today(),
+      m: () => NOTCH_JOURNAL.setView("month"),
+      w: () => NOTCH_JOURNAL.setView("week"),
+      d: () => NOTCH_JOURNAL.setView("day"),
+    };
+    if (jn[e.key]) { e.preventDefault(); jn[e.key](); }
     return;
   }
   if (activeTab !== "calendar" || typeof NOTCH_CAL === "undefined") return;

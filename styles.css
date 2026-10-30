@@ -2390,3 +2390,301 @@ body.calendar-active .bottom-scrim {
     color: var(--ink-soft);
   }
 }
+
+/* ===================================================================
+   4.6 — JOURNAL tab: monthly / weekly / daily bullet-journal spreads.
+   Same header/body split as CALENDAR. Two faces per page: TYPE (template
+   sections as plain text fields) and INK (a 3:4 paper sheet — the Bigme's
+   own ratio — with the template printed on it and a canvas on top).
+   E-ink first: rules, weight and inversion carry state, never hue.
+   =================================================================== */
+#journal-view {
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--ink);
+  overflow: visible;
+  padding: 0;
+}
+body.journal-active .bottom-scrim {
+  height: calc(var(--nk-tabbar-inset) + var(--nk-tabbar-h) + var(--nk-tabbar-inset) + env(safe-area-inset-bottom) + 16px);
+}
+
+/* four tabs at 360px: tighten the bar, never truncate a label */
+.tabbar .gn-item { padding: 0 4px; }
+@media (max-width: 420px) {
+  .tabbar { --gn-tracking: .03em; --gn-size: 12px; --gn-gap: 2px; }
+}
+
+.cal-day-acts { display: flex; gap: var(--s-2); }
+
+.jn-headbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 16px 10px 24px;
+}
+.jn-headbar-row { display: flex; align-items: center; gap: var(--s-2); }
+.jn-heading { flex: 1; min-width: 0; }
+.jn-kicker {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.jn-status { text-transform: none; letter-spacing: 0.02em; }
+.jn-title {
+  margin: 2px 0 0;
+  font-family: var(--ck-title);
+  font-size: var(--ck-fs-section);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.jn-nav { display: flex; align-items: center; gap: 2px; flex: none; }
+.jn-nav-btn {
+  width: 36px; height: 40px; padding: 0; border: 0;
+  background: transparent; color: var(--ink);
+  font-size: 24px; line-height: 1; cursor: pointer;
+}
+.jn-today-btn {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+.jn-today-btn:disabled { opacity: 0.35; cursor: default; }
+
+.jn-seg-row { display: flex; justify-content: space-between; gap: var(--s-3); margin-top: var(--s-2); }
+.jn-seg { display: inline-flex; border: 1px solid var(--ink); border-radius: 8px; overflow: hidden; }
+.jn-seg-btn {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-right: 1px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.jn-seg-btn:last-child { border-right: 0; }
+.jn-seg-btn.active { background: var(--ink); color: var(--bg); font-weight: 700; }
+
+.jn-body {
+  padding: 0 0 calc(var(--nk-tabbar-inset) + var(--nk-tabbar-h) + var(--nk-tabbar-inset) + env(safe-area-inset-bottom) + 24px);
+}
+.jn-page-type { padding: var(--s-3) var(--s-4) 0 var(--s-5); }
+
+.jn-section-label {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: var(--s-4) 0 var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.jn-section-hint { font-weight: 400; letter-spacing: 0.02em; text-transform: none; color: var(--ink-soft); }
+
+/* text fields read as ruled paper, not as form boxes */
+.jn-text {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 3em;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(1.6em - 1px), var(--border) calc(1.6em - 1px), var(--border) 1.6em);
+  background-attachment: local;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 16px;            /* ≥16px: no iOS zoom-on-focus */
+  line-height: 1.6em;
+  resize: none;
+  overflow: hidden;
+}
+.jn-text:focus { outline: none; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(1.6em - 1px), var(--ink-soft) calc(1.6em - 1px), var(--ink-soft) 1.6em); }
+.jn-text-small { min-height: 1.6em; font-size: 16px; }
+
+.jn-sigbar { display: flex; gap: 6px; margin: 0 0 var(--s-1); }
+.jn-sig-btn {
+  min-width: 40px;
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.jn-actions { display: flex; justify-content: flex-end; gap: var(--s-2); padding: var(--s-3) var(--s-4) 0 0; }
+.jn-ink .jn-actions { justify-content: center; padding: var(--s-3) 0; }
+.jn-link-btn {
+  padding: 8px 12px;
+  border: 1px solid var(--ink);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.jn-link-btn:disabled { border-color: var(--border); color: var(--ink-soft); cursor: default; }
+
+/* CONCURSUS marks: ■ done □ open, five domains in fixed order */
+.jn-cc {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: var(--s-2) 0;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.jn-cc-label { font-weight: 700; letter-spacing: 0.08em; }
+.jn-cc-none, .jn-cc-roll { color: var(--ink-soft); }
+.jn-cc-marks { font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.12em; }
+.jn-cc-small { font-size: 11px; letter-spacing: 0.06em; color: var(--ink-soft); }
+
+/* weekly spread */
+.jn-day-row { padding: var(--s-2) 0 2px; border-top: 1px solid var(--border); }
+.jn-day-row.today .jn-day-name { background: var(--ink); color: var(--bg); padding: 0 6px; border-radius: 4px; }
+.jn-day-head { display: flex; align-items: baseline; gap: 10px; font-family: var(--font-mono); font-size: 12px; }
+.jn-day-name { font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; min-width: 56px; }
+.jn-day-open {
+  margin-left: auto;
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+.jn-peek {
+  margin: 2px 0 4px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* monthly log: one line per date */
+.jn-month-list { border-top: 1px solid var(--border); }
+.jn-month-row {
+  display: grid;
+  grid-template-columns: 48px 58px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+  min-height: 36px;
+}
+.jn-month-row.monday { border-top: 1px solid var(--ink-soft); }
+.jn-month-date {
+  height: 36px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.jn-month-row.today .jn-month-date { font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.jn-month-line {
+  min-width: 0;
+  height: 34px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+}
+.jn-month-line:focus { outline: none; box-shadow: inset 0 -1px 0 var(--ink); }
+.jn-month-peek { font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft); text-align: right; }
+
+/* ink face */
+.jn-ink { padding: var(--s-3) 12px 0; }
+.jn-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--s-3); }
+.jn-tool {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--ink);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.jn-tool.active { background: var(--ink); color: var(--bg); font-weight: 700; }
+.jn-sheet {
+  position: relative;
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto var(--s-3);
+  aspect-ratio: 3 / 4;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--ink-soft);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.jn-paper { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.jn-paper .jn-dots { stroke: currentColor; stroke-width: 3; stroke-linecap: round; opacity: 0.45; fill: none; }
+.jn-paper .jn-rule { stroke: currentColor; stroke-width: 1.5; opacity: 0.6; fill: none; }
+.jn-paper text { fill: currentColor; font-family: var(--font-mono); }
+.jn-paper .jn-svg-title { font-size: 30px; font-weight: 700; letter-spacing: 2px; fill: var(--ink); }
+.jn-paper .jn-svg-label { font-size: 22px; font-weight: 700; letter-spacing: 2px; }
+.jn-paper .jn-svg-small { font-size: 22px; }
+.jn-paper .jn-svg-tiny { font-size: 17px; letter-spacing: 1px; }
+.jn-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;   /* stylus must ink, not scroll — fingers scroll via JS */
+  cursor: crosshair;
+}
+
+@media (min-width: 900px) {
+  #journal-view {
+    width: 100%;
+    max-width: var(--desk-col);
+    margin: 0 auto;
+    background: var(--bg);
+    border-inline: 1px solid var(--border);
+    min-height: 100dvh;
+  }
+  .jn-headbar { padding: 20px 20px 12px 28px; }
+  .jn-page-type { padding: var(--s-4) var(--s-6) 0; }
+  .jn-sig-btn:hover, .jn-tool:hover, .jn-link-btn:hover:not(:disabled) { background: var(--bg-subtle); }
+  .jn-tool.active:hover { background: var(--ink); }
+  .jn-month-row:hover { background: var(--bg-subtle); }
+}

@@ -1,7 +1,7 @@
 {
   "name": "Notch",
   "short_name": "Notch",
-  "description": "Personal task manifest, synced with Notion",
+  "description": "Tasks, calendar, bullet journal and CONCURSUS — synced across devices",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
