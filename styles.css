@@ -2688,3 +2688,13 @@ body.journal-active .bottom-scrim {
   .jn-tool.active:hover { background: var(--ink); }
   .jn-month-row:hover { background: var(--bg-subtle); }
 }
+
+/* 4.6.1 — which ink engine is live (APK only): "Fast ink" on Bigme */
+.jn-engine {
+  align-self: center;
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}

@@ -4,9 +4,12 @@ import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.view.View;
 import android.view.Window;
+import android.view.MotionEvent;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -25,11 +28,13 @@ import android.webkit.WebViewClient;
  * Worker keeps the Google token server-side, so connecting there still
  * connects the app.
  */
-public class MainActivity extends Activity {
+public class MainActivity extends Activity implements BigmeInk.Sink {
     static final String HOME = "https://merrickjo.github.io/tasks-pwa/index.html";
     static final String SCOPE_HOST = "merrickjo.github.io";
     static final String SCOPE_PATH = "/tasks-pwa";
     private WebView web;
+    private BigmeInk ink;
+    private long lastStylusDown = 0;      // uptime of the last pen DOWN the WebView itself received
 
     @Override
     protected void onCreate(Bundle saved) {
@@ -53,7 +58,7 @@ public class MainActivity extends Activity {
         s.setTextZoom(100);               // the layout is measured; don't let system font scale break it
         s.setMediaPlaybackRequiresUserGesture(true);
         s.setSupportZoom(false);
-        s.setUserAgentString(s.getUserAgentString() + " NotchAndroid/1.0");
+        s.setUserAgentString(s.getUserAgentString() + " NotchAndroid/1.1");
         CookieManager.getInstance().setAcceptCookie(true);
 
         web.setWebChromeClient(new WebChromeClient());
@@ -75,6 +80,12 @@ public class MainActivity extends Activity {
                 }
             }
         });
+
+        // 1.1 — native fast ink on Bigme (see BigmeInk). The page sees
+        // window.NotchInk only inside this APK; in a browser it stays absent
+        // and the journal uses its own canvas ink.
+        ink = new BigmeInk(this);
+        web.addJavascriptInterface(new InkBridge(), "NotchInk");
 
         if (saved != null) web.restoreState(saved);
         else web.loadUrl(HOME);
@@ -105,10 +116,91 @@ public class MainActivity extends Activity {
         web.onResume();
     }
 
+    // ── 1.1 native ink bridge ───────────────────────────────────────────────
+    // Methods arrive on the WebView's bridge thread; every engine call is
+    // posted to the main thread. Results come back through
+    // window.__notchInk.state(...) and window.__notchInk.stroke(...).
+    final class InkBridge {
+        @JavascriptInterface public String engine() {
+            return ink.available() ? "bigme" : "none";
+        }
+        @JavascriptInterface public String status() { return ink.status(); }
+        @JavascriptInterface public void start(final int l, final int t, final int r, final int b, final float w) {
+            web.post(() -> {
+                boolean ok = ink.start(web, l, t, r, b, w);
+                sendState(ok);
+            });
+        }
+        @JavascriptInterface public void bounds(final int l, final int t, final int r, final int b) {
+            web.post(() -> ink.setBounds(l, t, r, b));
+        }
+        @JavascriptInterface public void width(final float w) { web.post(() -> ink.setWidth(w)); }
+        @JavascriptInterface public void eraser(final boolean on) { web.post(() -> ink.setEraser(on)); }
+        @JavascriptInterface public void clear() { web.post(() -> ink.clear()); }
+        @JavascriptInterface public void stop() { web.post(() -> { ink.stop(); sendState(false); }); }
+        @JavascriptInterface public void retry() { web.post(() -> ink.resetFailure()); }
+    }
+
+    void sendState(boolean active) {
+        String js = "window.__notchInk&&window.__notchInk.state({active:" + active
+            + ",status:" + quote(ink.status()) + "})";
+        web.evaluateJavascript(js, null);
+    }
+
+    static String quote(String s) {
+        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ") + "\"";
+    }
+
+    @Override
+    public void onStroke(String tool, float[] pts, int n) {
+        StringBuilder sb = new StringBuilder(n * 6 + 64);
+        sb.append("window.__notchInk&&window.__notchInk.stroke(\"").append(tool).append("\",[");
+        for (int i = 0; i < n; i++) {
+            if (i > 0) sb.append(',');
+            float v = pts[i];
+            if (i % 3 == 2) sb.append(Math.round(v * 1000) / 1000f); else sb.append(Math.round(v));
+        }
+        sb.append("])");
+        web.evaluateJavascript(sb.toString(), null);
+    }
+
+    // While the pen service owns the stylus, a pen tap on a button outside
+    // the paper may never reach the page. If the WebView didn't see a pen
+    // DOWN for that tap, replay it as a finger tap so the UI still answers.
+    @Override
+    public void onExcludedTap(float x, float y, long downTime, long upTime) {
+        if (lastStylusDown >= downTime - 80) return;   // the page already got it
+        long t0 = SystemClock.uptimeMillis();
+        MotionEvent d = MotionEvent.obtain(t0, t0, MotionEvent.ACTION_DOWN, x, y, 0);
+        MotionEvent u = MotionEvent.obtain(t0, t0 + 40, MotionEvent.ACTION_UP, x, y, 0);
+        d.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
+        u.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
+        web.dispatchTouchEvent(d);
+        web.dispatchTouchEvent(u);
+        d.recycle(); u.recycle();
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (ev.getActionMasked() == MotionEvent.ACTION_DOWN && ev.getPointerCount() > 0) {
+            int tt = ev.getToolType(0);
+            if (tt == MotionEvent.TOOL_TYPE_STYLUS || tt == MotionEvent.TOOL_TYPE_ERASER) lastStylusDown = ev.getEventTime();
+        }
+        return super.dispatchTouchEvent(ev);
+    }
+
+    @Override
+    public void onConfigurationChanged(android.content.res.Configuration c) {
+        super.onConfigurationChanged(c);
+        // New geometry: drop the binding; the page restarts ink on resize.
+        if (ink != null) { ink.detach(); ink.resetFailure(); sendState(false); }
+    }
+
     @Override
     protected void onPause() {
         // Lets the page's visibilitychange handlers flush unsaved journal
         // text and ink before Android can freeze the app.
+        if (ink != null) ink.detach();   // never leave the pen service holding the panel
         web.onPause();
         CookieManager.getInstance().flush();
         super.onPause();

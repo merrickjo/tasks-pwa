@@ -22,6 +22,14 @@
 // history (35 days) and today's live state to /api/concursus, and the spreads
 // read the merged server copy — so the week/month rows match on every device.
 //
+// Fast ink (4.6.1): inside the Notch APK on a Bigme device the pen is handed
+// to the firmware's own handwriting service (window.NotchInk, see
+// android/src/.../BigmeInk.java). It paints on the panel directly with the
+// handwriting waveform while the pen moves; each finished stroke comes back
+// here (window.__notchInk.stroke) and is stored and drawn exactly like a
+// web-canvas stroke. Anywhere else — browsers, other tablets, or if the
+// service misbehaves — the canvas ink below is used unchanged.
+//
 // Load order: after app.js and concursus.js (uses getConfig, api, localISO,
 // todayISO, getCache, setCache, sortTasks, render, renderChips, showToast,
 // effectiveTheme, modeIcon, toggleTheme, CONCURSUS). app.js owns routing.
@@ -394,6 +402,7 @@ const NOTCH_JOURNAL = (function () {
   // ---------- render ----------
   function render() {
     if (!root) return;
+    nativeStop();
     canvases.length = 0;
     const key = currentKey();
     const r = rec(key);
@@ -405,7 +414,7 @@ const NOTCH_JOURNAL = (function () {
     else if (view === "week") body.appendChild(buildWeek(key, r));
     else body.appendChild(buildMonth(key, r));
     root.appendChild(body);
-    if (r.entry.mode === "ink") requestAnimationFrame(() => canvases.forEach((c) => c.resize()));
+    if (r.entry.mode === "ink") requestAnimationFrame(() => { canvases.forEach((c) => c.resize()); nativeStart(); });
   }
 
   function titleFor() {
@@ -748,6 +757,7 @@ const NOTCH_JOURNAL = (function () {
       render();
     });
     [pen, eraser, undo, finger].forEach((b) => tools.appendChild(b));
+    if (NI) tools.appendChild(el("span", "jn-engine", engineLabel()));
     wrap.appendChild(tools);
 
     const pages = Math.max(1, ...r.entry.ink.map((p) => p.page + 1));
@@ -782,6 +792,7 @@ const NOTCH_JOURNAL = (function () {
     }
     markInk(u.key, u.page);
     redrawPage(u.key, u.page);
+    nativeClearSoon();
   }
 
   function redrawPage(key, page) {
@@ -793,7 +804,9 @@ const NOTCH_JOURNAL = (function () {
     sheet.innerHTML = svgBackground(key, page);
     const canvas = el("canvas", "jn-canvas");
     sheet.appendChild(canvas);
-    const ctx = canvas.getContext("2d");
+    // desynchronized: lets Chrome skip the compositor for this canvas where
+    // supported (a hint; ignored elsewhere). Matters for the non-Bigme path.
+    const ctx = canvas.getContext("2d", { desynchronized: true }) || canvas.getContext("2d");
     let scale = 1;
     const inkColor = () => getComputedStyle(root).getPropertyValue("--ink").trim() || "#000";
 
@@ -832,7 +845,24 @@ const NOTCH_JOURNAL = (function () {
       scale = canvas.width / PAGE_W;
       redraw();
     }
-    canvases.push({ key, page, redraw, resize });
+    // Native strokes (Bigme fast ink) arrive in page units and are stored
+    // exactly like canvas strokes.
+    function addStroke(s) {
+      inkPage(r, page).strokes.push(s);
+      const c = inkColor();
+      ctx.strokeStyle = c; ctx.fillStyle = c; ctx.lineCap = "round"; ctx.lineJoin = "round";
+      drawStroke(s);
+      undoStack.push({ key, page, add: s });
+      if (undoStack.length > 200) undoStack.shift();
+      markInk(key, page);
+    }
+    function erasePoints(list) {
+      erasedNow = [];
+      list.forEach((pt) => eraseAt(pt));
+      if (erasedNow.length) { undoStack.push({ key, page, erased: erasedNow }); markInk(key, page); }
+      erasedNow = [];
+    }
+    canvases.push({ key, page, redraw, resize, sheet, canvas, addStroke, erasePoints });
 
     // --- input ---
     // Pen and mouse always draw. A finger draws only when "Finger draws" is
@@ -867,6 +897,8 @@ const NOTCH_JOURNAL = (function () {
     canvas.addEventListener("pointerdown", (e) => {
       const isTouch = e.pointerType === "touch";
       if (isTouch && !fingerInk) { scrollY = e.clientY; capture(e); return; }
+      // Fast ink owns the stylus: its strokes arrive via __notchInk.stroke.
+      if (nativeOn && e.pointerType === "pen") { nativeWatch(); return; }
       if (e.button > 0 && !(e.button === 5 || (e.buttons & 32))) return;
       e.preventDefault();
       capture(e);
@@ -916,6 +948,131 @@ const NOTCH_JOURNAL = (function () {
     return sheet;
   }
 
+  // ---------- fast ink (Bigme, inside the APK) ----------
+  const NI = (typeof window !== "undefined" && window.NotchInk) || null;
+  let nativeOn = false;        // the service is drawing the pen right now
+  let nativeStatus = "";
+  let nativeBroken = false;    // gave up for this session (watchdog)
+  let lastNativeStroke = 0;
+  let scrollTimer = null;
+  let scrolling = false;
+  function nativeEngine() {
+    if (!NI || nativeBroken) return false;
+    try { return NI.engine() === "bigme"; } catch { return false; }
+  }
+  function engineLabel() {
+    if (nativeBroken) return "Standard ink · fast ink off";
+    if (!nativeEngine()) return "Standard ink";
+    return nativeOn ? "Fast ink" : nativeStatus && nativeStatus !== "idle" && nativeStatus !== "ready" && nativeStatus !== "writing" ? "Standard ink · " + nativeStatus : "Fast ink…";
+  }
+  function paintLabel() {
+    const l = root && root.querySelector(".jn-engine");
+    if (l) l.textContent = engineLabel();
+  }
+  function inkGeometry() {
+    // Writable area: the visible part of the sheets, below the sticky header
+    // and above the floating tab bar, in physical (view) pixels.
+    if (!canvases.length || !root || root.style.display === "none") return null;
+    const dpr = window.devicePixelRatio || 1;
+    const head = root.querySelector(".jn-headbar");
+    const bar = document.getElementById("tabbar");
+    const top = Math.max(head ? head.getBoundingClientRect().bottom : 0, 0);
+    // (a fixed element has no offsetParent, so check display, not offsetParent)
+    const barShown = bar && getComputedStyle(bar).display !== "none";
+    const bottom = Math.min(barShown ? bar.getBoundingClientRect().top - 4 : window.innerHeight, window.innerHeight);
+    let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity, w = 0;
+    canvases.forEach((c) => {
+      const rc = c.sheet.getBoundingClientRect();
+      const vt = Math.max(rc.top, top), vb = Math.min(rc.bottom, bottom);
+      if (vb <= vt) return;
+      l = Math.min(l, rc.left); r = Math.max(r, rc.right); t = Math.min(t, vt); b = Math.max(b, vb);
+      w = rc.width;
+    });
+    if (!isFinite(l) || !w) return null;
+    return { l: Math.round(l * dpr), t: Math.round(t * dpr), r: Math.round(r * dpr), b: Math.round(b * dpr),
+      width: 3.2 * (w / PAGE_W) * dpr };
+  }
+  function nativeStart() {
+    if (!nativeEngine()) { paintLabel(); return; }
+    const g = inkGeometry();
+    if (!g) { nativeStop(); return; }
+    try {
+      NI.eraser(tool === "eraser");
+      NI.start(g.l, g.t, g.r, g.b, g.width);
+      nativeOn = true;
+    } catch { nativeOn = false; }
+    paintLabel();
+  }
+  function nativeStop() {
+    if (!NI) return;
+    if (nativeOn) { try { NI.stop(); } catch {} }
+    nativeOn = false;
+  }
+  // After the web canvas has painted a change (undo, erase), drop the
+  // service's copy of the ink so the panel shows the page as it now is.
+  function nativeClearSoon() {
+    if (!nativeOn) return;
+    requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => { if (nativeOn) { try { NI.clear(); } catch {} } }, 120)));
+  }
+  // Watchdog: if the page sees a pen stroke but the service never sends one
+  // back, fast ink isn't working on this firmware — fall back for the session.
+  function nativeWatch() {
+    const at = Date.now();
+    setTimeout(() => {
+      if (!nativeOn || lastNativeStroke >= at - 50) return;
+      nativeBroken = true;
+      nativeStop();
+      showToast("Fast ink didn't respond — using standard ink");
+      render();
+    }, 2500);
+  }
+  function nativeStroke(kind, flat) {
+    lastNativeStroke = Date.now();
+    if (!canvases.length || !flat || flat.length < 3) return;
+    const dpr = window.devicePixelRatio || 1;
+    const x0 = flat[0] / dpr, y0 = flat[1] / dpr;
+    // The page the stroke started on (nearest sheet if it began in a gap).
+    let target = null, best = Infinity;
+    canvases.forEach((c) => {
+      const rc = c.sheet.getBoundingClientRect();
+      const d = y0 < rc.top ? rc.top - y0 : y0 > rc.bottom ? y0 - rc.bottom : 0;
+      if (d < best) { best = d; target = { c, rc }; }
+    });
+    if (!target) return;
+    const { c, rc } = target;
+    const pts = [];
+    for (let i = 0; i + 2 < flat.length; i += 3) {
+      const x = Math.round((flat[i] / dpr - rc.left) / rc.width * PAGE_W);
+      const y = Math.round((flat[i + 1] / dpr - rc.top) / rc.height * PAGE_H);
+      const pr = Math.max(1, Math.min(15, Math.round((flat[i + 2] || 0.5) * 15)));
+      const last = pts[pts.length - 1];
+      if (last && (x - last[0]) ** 2 + (y - last[1]) ** 2 < 2.25 && i + 3 < flat.length) continue;
+      pts.push([x, y, pr]);
+    }
+    if (!pts.length) return;
+    if (kind === "rubber") { c.erasePoints(pts); nativeClearSoon(); return; }
+    c.addStroke({ id: newId(), w: 3.2, p: encode(pts) });
+  }
+  if (typeof window !== "undefined") {
+    window.__notchInk = {
+      state(s) { nativeStatus = (s && s.status) || ""; nativeOn = !!(s && s.active); paintLabel(); },
+      stroke(kind, flat) { try { nativeStroke(kind, flat); } catch (e) { console.warn("native stroke", e); } },
+    };
+    // The service's ink is pinned to the screen, the page isn't: wipe it the
+    // moment the page scrolls (the canvas underneath has every stroke) and
+    // re-aim the writing area once scrolling stops.
+    window.addEventListener("scroll", () => {
+      if (!nativeOn) return;
+      if (!scrolling) { scrolling = true; try { NI.clear(); } catch {} }
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => {
+        scrolling = false;
+        const g = inkGeometry();
+        if (g && nativeOn) { try { NI.bounds(g.l, g.t, g.r, g.b); } catch {} }
+      }, 160);
+    }, { passive: true });
+  }
+
   // ---------- navigation ----------
   function saveViewState() { try { sessionStorage.setItem(VIEW_KEY, JSON.stringify({ view, anchor })); } catch {} }
   function go(v, date) {
@@ -948,14 +1105,16 @@ const NOTCH_JOURNAL = (function () {
       } catch {}
       if (!anchor) anchor = todayISO();
       window.addEventListener("online", () => flushAll());
-      window.addEventListener("resize", () => canvases.forEach((c) => c.resize()));
+      window.addEventListener("resize", () => { canvases.forEach((c) => c.resize()); if (canvases.length) nativeStart(); });
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "hidden") {
           Object.keys(timers).forEach((k) => clearTimeout(timers[k]));
           flushAll();
+          nativeStop();
         } else if (getConfig()) {
           flushAll();
           pushConcursus();
+          if (canvases.length && root && root.style.display !== "none") setTimeout(nativeStart, 300);
         }
       });
       if (typeof CONCURSUS !== "undefined") CONCURSUS.subscribe(() => { pushConcursus(); if (root && root.style.display !== "none" && !isDirtyNow()) renderSoon(); });
@@ -973,6 +1132,7 @@ const NOTCH_JOURNAL = (function () {
 
   return {
     init, refresh, background,
+    pause: () => nativeStop(),
     openDay: (date) => { view = "day"; anchor = date; saveViewState(); },
     prev: () => shift(-1), next: () => shift(1), today: () => go(view, todayISO()),
     setView: (v) => go(v, anchor),

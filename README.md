@@ -58,6 +58,13 @@ version code every build. **Always sign with the same key** (kept on the Mac in
 `~/Library/Application Support/Notch/android/`, never in git) — a different
 key means Android refuses to install the update over the old app.
 
+**Fast ink on Bigme (1.1):** on a Bigme device the APK hands the stylus to the
+firmware's handwriting service (`android/src/.../BigmeInk.java`), the same
+path Bigme's own notes app uses, so ink appears as the pen moves instead of
+waiting for an e-ink page refresh. The ink toolbar says **Fast ink** when it's
+on. If the service is missing or doesn't answer, the journal falls back to its
+web-canvas ink by itself ("Standard ink · fast ink off").
+
 First launch needs internet (the app saves itself for offline after that),
 and asks for the Worker URL + app key once, like any new browser.
 

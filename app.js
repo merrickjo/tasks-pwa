@@ -9,7 +9,7 @@
 // return [] for both, which rendered a connection error over a real "No
 // open tasks" state. One-time fallback reads the old bare-array key.
 // 4.3.3 — shown on the date line so "which version am I on?" is answerable at a glance.
-const APP_BUILD = "v4.6.0";
+const APP_BUILD = "v4.6.1";
 const CACHE_KEY = "tasks-cache-v2";
 const LEGACY_CACHE_KEY = "tasks-cache-v1";
 const CFG_KEY = "tasks-cfg-v1";
@@ -1613,6 +1613,8 @@ function setActiveTab(tab) {
   jnEl.style.display = tab === "journal" ? "block" : "none";
 
   try { sessionStorage.setItem(TAB_SESSION_KEY, tab); } catch { /* non-fatal */ }
+  // 4.6.1 — hand the pen back to the page when leaving the journal (Bigme fast ink).
+  if (tab !== "journal" && typeof NOTCH_JOURNAL !== "undefined") NOTCH_JOURNAL.pause();
 
   if (tab === "concursus") {
     CONCURSUS.init(ccEl); // idempotent — safe to call on every switch

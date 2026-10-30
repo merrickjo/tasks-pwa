@@ -227,7 +227,8 @@
 // desktop.html now redirects here, desktop.js/desktop.css removed.
 // v50 -> v51: 4.6 JOURNAL tab (journal.js new); index.html, app.js,
 // calendar.js, styles.css, manifest.json changed.
-const CACHE_NAME = "tasks-shell-v51";
+// v51 -> v52: 4.6.1 Bigme fast ink bridge (journal.js, app.js, styles.css).
+const CACHE_NAME = "tasks-shell-v52";
 const SHELL = [
   "./",
   "./index.html",
