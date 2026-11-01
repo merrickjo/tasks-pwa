@@ -1,5 +1,6 @@
 // Tasks API — Cloudflare Worker + D1
 //
+// v11.1 (1 Nov 2026): journal index ignores "_"-prefixed sections (4.7 links).
 // v11 (30 Oct 2026): + journal — /api/journal (range index), /api/journal/:key
 //   (page get/put, optimistic rev), /api/journal/:key/ink/:page (handwriting),
 //   /api/concursus (durable CONCURSUS history), /api/sync/journal (Mac mirror).
@@ -380,7 +381,8 @@ async function journalIndex(env, from, to) {
   for (const r of rows) {
     let sec = {};
     try { sec = JSON.parse(r.sections) || {}; } catch {}
-    const text = Object.values(sec).join("\n");
+    // v11.1: "_"-prefixed sections are app data (4.7's _links), not writing.
+    const text = Object.entries(sec).filter(([k]) => !k.startsWith("_")).map(([, v]) => v).join("\n");
     const first = text.split("\n").map((l) => l.trim()).find((l) => l) || "";
     out[r.key.slice(2)] = { text: !!text.trim(), first: first.slice(0, 120), ink: 0 };
   }

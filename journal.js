@@ -7,6 +7,11 @@
 //                         and a peek at that day's log) · Sunday review
 //   DAY    d:YYYY-MM-DD  CONCURSUS strip · rapid log (• task ○ event – note
 //                         × done > migrated)
+// 4.7: pages talk to Tasks and the calendar — "• x" / "○ 14:00 x" on a dated
+// line sends to Tasks / Google Calendar; each date shows what's already
+// scheduled; a sent task that gets done turns its "> x" line into "× x".
+// See "4.7 links" below.
+//
 // Every page has two faces: TYPE (the template's text sections) and INK (a
 // 3:4 paper page with the same template printed on it, written on with a
 // stylus). Both live in the Worker (D1), so the web app and the APK read the
@@ -36,7 +41,7 @@
 
 const NOTCH_JOURNAL = (function () {
   const CACHE_KEY = "journal-cache-v1";   // { key: record }  (record below)
-  const INDEX_KEY = "journal-index-v1";   // { "from|to": { fetchedAt, days, cc } }
+  const INDEX_KEY = "journal-index-v1";   // { "from|to": { fetchedAt, days, cc, cal } }
   const FINGER_KEY = "journal-finger-v1"; // "1" when a finger may draw
   const VIEW_KEY = "journal-view-v1";     // session: { view, anchor }
   const FACE_KEY = "journal-face-v1";     // last face used (type | ink): new pages open in it
@@ -333,28 +338,35 @@ const NOTCH_JOURNAL = (function () {
       const range = rangeFor();
       view = saved;
       const c = cachedIndex(range);
-      if (c && Date.now() - c.fetchedAt < REFETCH_MS) continue;
-      try {
-        const [j, cc] = await Promise.all([
-          v === "day" ? Promise.resolve({ status: 200, data: { days: {} } }) : req("GET", `/api/journal?from=${range.from}&to=${range.to}`),
-          req("GET", `/api/concursus?from=${range.from}&to=${range.to}`),
-        ]);
-        if (j.status === 200 && cc.status === 200) writeIndex(range, { days: j.data.days || {}, cc: cc.data.days || {} });
-      } catch {}
+      if (c && c.cal && Date.now() - c.fetchedAt < REFETCH_MS) continue;
+      try { await fetchIndex(v, range, c); } catch {}
     }
+  }
+
+  // One round for a spread: day-page index, CONCURSUS, and (4.7) the
+  // calendar — Outlook mirror + Google — flattened. A calendar failure keeps
+  // the last copy rather than blanking the "scheduled" lines.
+  async function fetchIndex(v, range, prev) {
+    const [j, cc, cal] = await Promise.all([
+      v === "day" ? Promise.resolve({ status: 200, data: { days: {} } }) : req("GET", `/api/journal?from=${range.from}&to=${range.to}`),
+      req("GET", `/api/concursus?from=${range.from}&to=${range.to}`),
+      req("GET", `/api/calendar?from=${range.from}&to=${range.to}`).catch(() => ({ status: 0 })),
+    ]);
+    if (j.status !== 200 || cc.status !== 200) throw new Error("index");
+    let events = (prev && prev.cal) || [];
+    if (cal.status === 200 && cal.data) {
+      events = [...(cal.data.outlook ? cal.data.outlook.events : []), ...(cal.data.google ? cal.data.google.events : [])]
+        .map((e) => ({ id: e.id || "", date: e.date, title: e.title, start: e.start, allDay: !!e.allDay, source: e.source }));
+    }
+    writeIndex(range, { days: j.data.days || {}, cc: cc.data.days || {}, cal: events });
   }
 
   async function loadIndex(force) {
     const range = rangeFor();
     const c = cachedIndex(range);
-    if (!force && c && Date.now() - c.fetchedAt < REFETCH_MS) return;
+    if (!force && c && c.cal && Date.now() - c.fetchedAt < REFETCH_MS) return;
     try {
-      const [j, cc] = await Promise.all([
-        view === "day" ? Promise.resolve({ status: 200, data: { days: {} } }) : req("GET", `/api/journal?from=${range.from}&to=${range.to}`),
-        req("GET", `/api/concursus?from=${range.from}&to=${range.to}`),
-      ]);
-      if (j.status !== 200 || cc.status !== 200) throw new Error("index");
-      writeIndex(range, { days: j.data.days || {}, cc: cc.data.days || {} });
+      await fetchIndex(view, range, c);
       if (rangeFor().from === range.from) renderSoon();
     } catch { /* spreads still render from cache + local history */ }
   }
@@ -441,10 +453,18 @@ const NOTCH_JOURNAL = (function () {
     return [key, view, anchor, e.mode, tool, fingerInk, todayISO(),
       hashStr(JSON.stringify(e.sections || {})), inkIds,
       idx ? hashStr(JSON.stringify(idx.days || {})) : "",
+      hashStr(JSON.stringify(((cachedIndex(range) || {}).cal) || [])),
+      hashStr(JSON.stringify(dueInRange(range))),
       hashStr(JSON.stringify(concursusFor(range)))].join("§");
   }
+  function dueInRange(range) {
+    try { return getCache().filter((t) => { const d = dueDate(t.due); return d && d >= range.from && d <= range.to; }).map((t) => [t.id, t.title, t.due, t.priority]); }
+    catch { return []; }
+  }
   function noteShown(key) { if (root && key === currentKey()) lastSig = viewSig(); }
-  function renderSoon() {
+  let forceNext = false;
+  function renderSoon(force) {
+    if (force) forceNext = true;
     if (renderQueued) return;
     renderQueued = true;
     requestAnimationFrame(() => {
@@ -453,7 +473,8 @@ const NOTCH_JOURNAL = (function () {
       // Don't yank a textarea out from under the cursor.
       const a = document.activeElement;
       if (a && root.contains(a) && (a.tagName === "TEXTAREA" || a.tagName === "INPUT")) return;
-      if (viewSig() === lastSig) return;
+      if (viewSig() === lastSig && !forceNext) return;
+      forceNext = false;
       render();
     });
   }
@@ -461,10 +482,12 @@ const NOTCH_JOURNAL = (function () {
   // ---------- render ----------
   function render() {
     if (!root) return;
-    lastSig = viewSig();
-    canvases.length = 0;
     const key = currentKey();
     const r = rec(key);
+    applyDone(key, r);   // 4.7 — "> x" → "× x" for tasks finished elsewhere
+    maybeLoadDone(r);
+    lastSig = viewSig();
+    canvases.length = 0;
     root.innerHTML = "";
     root.appendChild(buildHeader(r));
     const body = el("div", "jn-body");
@@ -574,48 +597,150 @@ const NOTCH_JOURNAL = (function () {
     const bar = el("div", "jn-sigbar");
     SIGNIFIERS.forEach(([g, name]) => {
       const b = button("jn-sig-btn", g, name, () => {
-        const v = ta.value;
-        const pos = ta.selectionStart || 0;
-        const start = v.lastIndexOf("\n", pos - 1) + 1;
-        let end = v.indexOf("\n", start); if (end < 0) end = v.length;
-        const line = v.slice(start, end).replace(SIG_RE, "");
-        const next = `${g} ${line}`;
-        ta.value = v.slice(0, start) + next + v.slice(end);
-        const caret = start + next.length;
-        ta.focus();
-        ta.setSelectionRange(caret, caret);
-        ta.dispatchEvent(new Event("input"));
+        const tgt = typeof ta === "function" ? ta() : ta;
+        if (!tgt) return;
+        signify(tgt, g);
       });
+      // Keep the focused line focused (and its caret) while tapping a glyph.
+      b.addEventListener("pointerdown", (e) => e.preventDefault());
       bar.appendChild(b);
     });
     return bar;
   }
-  function openTasksIn(text) {
-    return (text || "").split("\n").map((l) => /^•\s+(\S.*)$/.exec(l.trim())).filter(Boolean).map((m) => m[1].trim());
+  function signify(ta, g) {
+    const v = ta.value;
+    const pos = ta.selectionStart || 0;
+    const start = v.lastIndexOf("\n", pos - 1) + 1;
+    let end = v.indexOf("\n", start); if (end < 0) end = v.length;
+    const line = v.slice(start, end).replace(SIG_RE, "");
+    const next = `${g} ${line}`;
+    ta.value = v.slice(0, start) + next + v.slice(end);
+    const caret = start + next.length;
+    ta.focus();
+    ta.setSelectionRange(caret, caret);
+    ta.dispatchEvent(new Event("input"));
   }
-  // "• call X" → a real Notch task; the line becomes "> call X" (migrated),
-  // the bullet-journal mark for "moved somewhere else".
-  async function sendToTasks(key, r, sectionId, due, btn) {
-    const lines = (r.entry.sections[sectionId] || "").split("\n");
-    const todo = [];
-    lines.forEach((l, i) => { const m = /^(\s*)•\s+(\S.*)$/.exec(l); if (m) todo.push([i, m[1], m[2].trim()]); });
-    if (!todo.length) return;
-    btn.disabled = true;
-    let made = 0;
-    for (const [i, indent, title] of todo) {
-      try {
-        const payload = { title: title.slice(0, 200), priority: "P3 - Medium" };
-        if (due) payload.due = due;
-        const res = await req("POST", "/api/tasks", payload);
-        if (res.status !== 201) throw new Error("HTTP " + res.status);
-        lines[i] = `${indent}> ${title}`;
-        made++;
-        try { setCache([res.data, ...getCache()]); } catch {}
-      } catch { break; }
+  // Week and month: one bar for many lines — it acts on the line last touched.
+  let lastField = null;
+  function trackField(f) { f.addEventListener("focus", () => { lastField = f; }); return f; }
+  // ---------- 4.7 links: journal ↔ Tasks / Calendar ----------
+  // OUT  "• x" on a dated line → a Notch task due that date; "○ 14:00 x" →
+  //      a Google Calendar event that date (no time = all day; no end = 1h).
+  //      Dated lines: the day log, the week's seven day slots, the month's
+  //      per-date lines. The month's Tasks list sends undated tasks.
+  //      A sent line becomes "> x" — the bullet-journal mark for migrated.
+  // IN   every date shows what Tasks and the calendar already hold for it,
+  //      read-only, beside your own lines.
+  // BACK the page remembers which task each sent line became (hidden
+  //      section "_links"); when that task is done, "> x" becomes "× x".
+  //      Edit the line and the link lets go quietly — it never guesses.
+  const LINKS = "_links";
+  const TASK_LINE = /^(\s*)•\s+(\S.*)$/;
+  const EVENT_LINE = /^(\s*)○\s+(\S.*)$/;
+  const MOVED_LINE = /^(\s*)>\s+(\S.*)$/;
+  const EV_TIME = /^(\d{1,2})[:.](\d{2})(?:\s*[-–]\s*(\d{1,2})[:.](\d{2}))?\s+(\S.*)$/;
+
+  function linksOf(r) {
+    try { const l = JSON.parse(r.entry.sections[LINKS] || "[]"); return Array.isArray(l) ? l : []; } catch { return []; }
+  }
+  function setLinks(r, list) {
+    if (list.length) r.entry.sections[LINKS] = JSON.stringify(list.slice(-200));
+    else if (r.entry.sections[LINKS]) r.entry.sections[LINKS] = "";
+  }
+  // [sectionId, date | null] for the sections on this spread that can send.
+  function datedSections() {
+    if (view === "day") return [["log", anchor]];
+    if (view === "week") return weekDays(anchor).map((d, i) => ["d" + i, d]);
+    return monthDays(anchor).map((d) => ["l" + d.slice(8), d]).concat([["tasks", null]]);
+  }
+  const pad2 = (n) => String(n).padStart(2, "0");
+  // "14:00 review" · "9.30-10:15 review" · "review" (all day). null = a time
+  // that can't be a calendar slot (25:00, end before start).
+  function parseEventText(rest) {
+    const m = EV_TIME.exec(rest);
+    if (!m) return { title: rest, start: null, end: null };
+    const h = +m[1], mi = +m[2];
+    if (h > 23 || mi > 59) return null;
+    const start = pad2(h) + ":" + pad2(mi);
+    let end;
+    if (m[3] !== undefined) {
+      if (+m[3] > 23 || +m[4] > 59) return null;
+      end = pad2(+m[3]) + ":" + pad2(+m[4]);
+    } else {
+      const t = Math.min(h * 60 + mi + 60, 23 * 60 + 59);
+      end = pad2(Math.floor(t / 60)) + ":" + pad2(t % 60);
     }
-    r.entry.sections[sectionId] = lines.join("\n");
+    if (end <= start) return null;
+    return { title: m[5].trim(), start, end };
+  }
+  function pendingIn(r) {
+    const out = [];
+    datedSections().forEach(([id, date]) => {
+      (r.entry.sections[id] || "").split("\n").forEach((raw) => {
+        let m = TASK_LINE.exec(raw);
+        if (m) { out.push({ id, date, raw, indent: m[1], rest: m[2].trim(), kind: "task" }); return; }
+        m = EVENT_LINE.exec(raw);
+        if (m && date) out.push({ id, date, raw, indent: m[1], rest: m[2].trim(), kind: "event" });
+      });
+    });
+    return out;
+  }
+  let sending = false;
+  async function sendAll(key, r, btn) {
+    const items = pendingIn(r);
+    if (!items.length || sending) return;
+    sending = true;
+    btn.disabled = true;
+    btn.textContent = "Sending…";
+    const links = linksOf(r);
+    let tasks = 0, events = 0, badTime = 0, googleOff = false;
+    for (const it of items) {
+      let res;
+      try {
+        if (it.kind === "task") {
+          const payload = { title: it.rest.slice(0, 200), priority: "P3 - Medium" };
+          if (it.date) payload.due = it.date;
+          res = await req("POST", "/api/tasks", payload);
+          if (res.status !== 201) throw new Error("HTTP " + res.status);
+          try { setCache([res.data, ...getCache()]); } catch {}
+          tasks++;
+        } else {
+          if (googleOff) continue;
+          const ev = parseEventText(it.rest);
+          if (!ev) { badTime++; continue; }
+          const body = { title: ev.title.slice(0, 200), date: it.date };
+          if (ev.start) { body.start = ev.start; body.end = ev.end; }
+          res = await req("POST", "/api/calendar/events", body);
+          if (res.status === 409) { googleOff = true; continue; }
+          if (res.status !== 201) throw new Error("HTTP " + res.status);
+          events++;
+        }
+      } catch { break; }
+      // Re-find the line by its text: you may have typed while this ran.
+      const lines = (r.entry.sections[it.id] || "").split("\n");
+      const i = lines.indexOf(it.raw);
+      if (i >= 0) lines[i] = `${it.indent}> ${it.rest}`;
+      r.entry.sections[it.id] = lines.join("\n");
+      links.push({ s: it.id, t: it.rest, id: (res.data && res.data.id) || "", k: it.kind });
+    }
+    sending = false;
+    setLinks(r, links);
     markText(key);
-    showToast(made === todo.length ? `${made} task${made === 1 ? "" : "s"} sent to Notch` : `Sent ${made} of ${todo.length} — check your connection`);
+    const left = items.length - tasks - events;
+    const parts = [];
+    if (tasks) parts.push(`${tasks} task${tasks === 1 ? "" : "s"} → Tasks`);
+    if (events) parts.push(`${events} event${events === 1 ? "" : "s"} → Calendar`);
+    if (googleOff) parts.push("Google isn't connected — ○ lines stayed");
+    else if (badTime) parts.push(`${badTime} ○ line${badTime === 1 ? " has" : "s have"} a time that doesn't work`);
+    if (left - badTime > 0 && !googleOff) parts.push(`${left - badTime} not sent — check your connection`);
+    showToast(parts.join(" · ") || "Nothing sent");
+    if (events) {
+      // Every cached spread's calendar is now out of date, not just this one.
+      try { localStorage.removeItem("calendar-cache-v1"); } catch {}
+      try { const idx = readIndex(); Object.values(idx).forEach((v) => { v.fetchedAt = 0; }); localStorage.setItem(INDEX_KEY, JSON.stringify(idx)); } catch {}
+      prefetchedFor = "";
+      loadIndex(true);
+    }
     renderTasksTab();
     render();
   }
@@ -624,11 +749,117 @@ const NOTCH_JOURNAL = (function () {
     // through window (classic-script function declarations live there).
     try { const s = sortTasks(getCache()); renderChips(s); if (typeof window.render === "function") window.render(s); } catch {}
   }
-  function sendButton(key, r, sectionId, due) {
-    const n = openTasksIn(r.entry.sections[sectionId]).length;
-    const b = button("jn-link-btn", n ? `Send ${n} • to Tasks →` : "• lines become tasks", null, () => sendToTasks(key, r, sectionId, due, b));
-    b.disabled = !n;
-    return b;
+  function sendLabel(r) {
+    const items = pendingIn(r);
+    const t = items.filter((x) => x.kind === "task").length;
+    const e = items.length - t;
+    if (!items.length) return ["• → Tasks · ○ → Calendar", false];
+    return [`Send ${[t ? t + " •" : "", e ? e + " ○" : ""].filter(Boolean).join(" · ")} →`, true];
+  }
+  let sendRowEl = null;
+  function sendRow(key, r) {
+    sendRowEl = el("div", "jn-actions");
+    fillSendRow(key, r);
+    return sendRowEl;
+  }
+  function fillSendRow(key, r) {
+    if (!sendRowEl || sending) return;
+    const [label, on] = sendLabel(r);
+    const b = button("jn-link-btn", label, null, () => sendAll(key, r, b));
+    b.disabled = !on;
+    sendRowEl.replaceChildren(b);
+  }
+
+  // BACK: a linked "> x" whose task is done becomes "× x". Runs inside
+  // render() only, so it never edits text under a cursor.
+  let doneIds = new Set(), doneAt = 0, doneLoading = false;
+  function applyDone(key, r) {
+    const links = linksOf(r);
+    if (!links.length) return;
+    const keep = [];
+    let changed = false;
+    links.forEach((l) => {
+      const lines = (r.entry.sections[l.s] || "").split("\n");
+      const i = lines.findIndex((x) => { const m = MOVED_LINE.exec(x); return m && m[2].trim() === l.t; });
+      if (i < 0) { changed = true; return; } // line edited or gone: let go
+      if (l.k === "task" && doneIds.has(l.id)) {
+        lines[i] = lines[i].replace(/^(\s*)>/, "$1×");
+        r.entry.sections[l.s] = lines.join("\n");
+        changed = true;
+        return;
+      }
+      keep.push(l);
+    });
+    if (!changed) return;
+    setLinks(r, keep);
+    markText(key);
+  }
+  function maybeLoadDone(r) {
+    // The task cache can be stale (done on another device, or in Obsidian),
+    // so ask the server — at most once a minute, only for pages with links.
+    const waiting = linksOf(r).some((l) => l.k === "task" && l.id && !doneIds.has(l.id));
+    if (!waiting || doneLoading || Date.now() - doneAt < REFETCH_MS || !getConfig()) return;
+    doneLoading = true;
+    req("GET", "/api/tasks/completed?days=120").then((res) => {
+      if (res.status !== 200 || !res.data) return;
+      doneIds = new Set((res.data.tasks || []).map((t) => t.id));
+      doneAt = Date.now();
+      const cur = all()[currentKey()];
+      if (cur && linksOf(cur).some((l) => l.k === "task" && doneIds.has(l.id))) renderSoon(true);
+    }).catch(() => {}).finally(() => { doneLoading = false; });
+  }
+
+  // IN: what Tasks and the calendar hold for a date, minus what this page
+  // itself sent (its "> x" line already stands for it).
+  function timeOf(s) {
+    const d = new Date(s);
+    return isNaN(d) ? "" : pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+  }
+  function scheduledFor(date, r) {
+    const range = rangeFor();
+    const idx = cachedIndex(range);
+    const sent = new Set(linksOf(r).map((l) => l.id).filter(Boolean));
+    const evs = ((idx && idx.cal) || []).filter((e) => e.date === date && !sent.has(e.id))
+      .sort((a, b) => (a.allDay !== b.allDay ? (a.allDay ? -1 : 1) : Date.parse(a.start) - Date.parse(b.start)));
+    let tasks = [];
+    try { tasks = sortTasks(getCache()).filter((t) => dueDate(t.due) === date && !sent.has(t.id)); } catch {}
+    return { evs, tasks };
+  }
+  function evText(e) { return "○ " + (e.allDay ? "" : timeOf(e.start) + " ") + e.title; }
+  function openTask(t) {
+    if (typeof setActiveTab !== "function" || typeof openEditSheet !== "function") return;
+    setActiveTab("tasks");
+    openEditSheet(t, null);
+  }
+  function scheduledBlock(date, r) {
+    const { evs, tasks } = scheduledFor(date, r);
+    const wrap = el("div", "jn-sched");
+    wrap.appendChild(sectionLabel("Scheduled", "from Calendar and Tasks · read-only"));
+    if (!evs.length && !tasks.length) { wrap.appendChild(el("div", "jn-sched-none", "Nothing scheduled.")); return wrap; }
+    evs.forEach((e) => {
+      const row = el("div", "jn-sched-row");
+      row.appendChild(el("span", "jn-sched-text", evText(e)));
+      row.appendChild(el("span", "jn-sched-src", e.source === "google" ? "GOOGLE" : "OUTLOOK"));
+      wrap.appendChild(row);
+    });
+    tasks.forEach((t) => {
+      const row = button("jn-sched-row jn-sched-task", "", "Open task: " + t.title, () => openTask(t));
+      row.appendChild(el("span", "jn-sched-text", "• " + t.title));
+      row.appendChild(el("span", "jn-sched-src", (t.priority || "").slice(0, 2)));
+      wrap.appendChild(row);
+    });
+    return wrap;
+  }
+  function scheduledLine(date, r, max) {
+    const { evs, tasks } = scheduledFor(date, r);
+    const items = [...evs.map(evText), ...tasks.map((t) => "• " + t.title)];
+    if (!items.length) return null;
+    const shown = items.slice(0, max);
+    return shown.join(" · ") + (items.length > max ? ` · +${items.length - max}` : "");
+  }
+  function scheduledCounts(date, r) {
+    const { evs, tasks } = scheduledFor(date, r);
+    return [evs.length ? "○" + evs.length : "", tasks.length ? "•" + tasks.length : ""].filter(Boolean).join(" ");
   }
 
   function ccStrip(date) {
@@ -645,17 +876,15 @@ const NOTCH_JOURNAL = (function () {
   function buildDay(key, r) {
     const wrap = el("div", "jn-page-type");
     wrap.appendChild(ccStrip(anchor));
+    wrap.appendChild(scheduledBlock(anchor, r));
     wrap.appendChild(sectionLabel("Rapid log", "• task  ○ event  – note  × done  > migrated"));
-    let sendRow;
     const ta = textArea(key, r, "log", "• call the venue\n○ 14:00 product review\n– idea: …", {
       rows: 10,
-      onInput: () => { const b = sendButton(key, r, "log", anchor); sendRow.replaceChildren(b); },
+      onInput: () => fillSendRow(key, r),
     });
     wrap.appendChild(signifierBar(ta));
     wrap.appendChild(ta);
-    sendRow = el("div", "jn-actions");
-    sendRow.appendChild(sendButton(key, r, "log", anchor));
-    wrap.appendChild(sendRow);
+    wrap.appendChild(sendRow(key, r));
     return wrap;
   }
 
@@ -666,6 +895,10 @@ const NOTCH_JOURNAL = (function () {
     const wrap = el("div", "jn-page-type");
     wrap.appendChild(sectionLabel("Focus", "the one or two things this week is for"));
     wrap.appendChild(textArea(key, r, "focus", "", { rows: 2 }));
+    wrap.appendChild(sectionLabel("Days", "• → Tasks · ○ 14:00 → Calendar, on that day"));
+    lastField = null;
+    const fields = [];
+    wrap.appendChild(signifierBar(() => lastField || fields[0]));
     const today = todayISO();
     range.days.forEach((date, i) => {
       const row = el("div", "jn-day-row" + (date === today ? " today" : ""));
@@ -676,13 +909,18 @@ const NOTCH_JOURNAL = (function () {
       if (snap) head.appendChild(el("span", "jn-cc-roll", "d" + snap.roll));
       head.appendChild(button("jn-day-open", "log ›", "Open " + shortDay(date) + " daily log", () => go("day", date)));
       row.appendChild(head);
-      row.appendChild(textArea(key, r, "d" + i, "plan", { rows: 1, small: true }));
+      const sched = scheduledLine(date, r, 4);
+      if (sched) row.appendChild(el("div", "jn-in", sched));
+      const ta = trackField(textArea(key, r, "d" + i, "plan", { rows: 1, small: true, onInput: () => fillSendRow(key, r) }));
+      fields.push(ta);
+      row.appendChild(ta);
       const peek = idx && idx.days && idx.days[date];
       if (peek && (peek.first || peek.ink)) {
         row.appendChild(el("div", "jn-peek", (peek.ink ? "✎ " : "") + (peek.first || "handwritten")));
       }
       wrap.appendChild(row);
     });
+    wrap.appendChild(sendRow(key, r));
     wrap.appendChild(sectionLabel("Review", "what moved · what didn't · what migrates"));
     wrap.appendChild(textArea(key, r, "review", "", { rows: 4 }));
     return wrap;
@@ -698,7 +936,10 @@ const NOTCH_JOURNAL = (function () {
 
     const rolled = range.days.filter((d) => cc[d]).length;
     const notch = range.days.filter((d) => cc[d] && cc[d].notch).length;
-    wrap.appendChild(sectionLabel("Calendar", `CONCURSUS · ${rolled} rolled · ${notch} notch`));
+    wrap.appendChild(sectionLabel("Calendar", `CONCURSUS · ${rolled} rolled · ${notch} notch · ○ scheduled • due`));
+    lastField = null;
+    const fields = [];
+    wrap.appendChild(signifierBar(() => lastField || fields[0]));
     const list = el("div", "jn-month-list");
     const today = todayISO();
     range.days.forEach((date) => {
@@ -711,23 +952,27 @@ const NOTCH_JOURNAL = (function () {
       line.type = "text";
       const id = "l" + String(d.getDate()).padStart(2, "0");
       line.value = r.entry.sections[id] || "";
-      line.addEventListener("input", () => { r.entry.sections[id] = line.value; markText(key); });
+      line.addEventListener("input", () => { r.entry.sections[id] = line.value; markText(key); fillSendRow(key, r); });
       line.addEventListener("blur", () => { if (rec(key).dirtyText) { clearTimeout(timers["text:" + key]); flushText(key); } });
+      trackField(line);
+      fields.push(line);
       row.appendChild(line);
+      const counts = scheduledCounts(date, r);
+      const inEl = el("span", "jn-month-in", counts);
+      const sched = counts ? scheduledLine(date, r, 6) : "";
+      if (sched) inEl.title = sched;
+      row.appendChild(inEl);
       const peek = idx && idx.days && idx.days[date];
       row.appendChild(el("span", "jn-month-peek", peek ? (peek.ink ? "✎" : "") + (peek.text ? "¶" : "") : ""));
       list.appendChild(row);
     });
     wrap.appendChild(list);
 
-    wrap.appendChild(sectionLabel("Tasks", "this month's list — • lines can go to Notch"));
-    let sendRow;
-    const ta = textArea(key, r, "tasks", "", { rows: 5, onInput: () => sendRow.replaceChildren(sendButton(key, r, "tasks", null)) });
+    wrap.appendChild(sectionLabel("Tasks", "this month's list — • lines go to Tasks with no date"));
+    const ta = textArea(key, r, "tasks", "", { rows: 5, onInput: () => fillSendRow(key, r) });
     wrap.appendChild(signifierBar(ta));
     wrap.appendChild(ta);
-    sendRow = el("div", "jn-actions");
-    sendRow.appendChild(sendButton(key, r, "tasks", null));
-    wrap.appendChild(sendRow);
+    wrap.appendChild(sendRow(key, r));
     return wrap;
   }
 

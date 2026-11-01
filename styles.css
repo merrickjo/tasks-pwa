@@ -2597,7 +2597,7 @@ body.journal-active .bottom-scrim {
 .jn-month-list { border-top: 1px solid var(--border); }
 .jn-month-row {
   display: grid;
-  grid-template-columns: 48px 58px minmax(0, 1fr) 24px;
+  grid-template-columns: 48px 58px minmax(0, 1fr) auto 24px;
   align-items: center;
   gap: 6px;
   border-bottom: 1px solid var(--border);
@@ -2627,6 +2627,40 @@ body.journal-active .bottom-scrim {
 }
 .jn-month-line:focus { outline: none; box-shadow: inset 0 -1px 0 var(--ink); }
 .jn-month-peek { font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft); text-align: right; }
+
+/* 4.7 — what Tasks and the calendar already hold for a date (read-only).
+   Glyphs carry the meaning (○ event, • task), never colour — e-ink first. */
+.jn-month-in { font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); white-space: nowrap; }
+.jn-in {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.jn-sched { padding-bottom: var(--s-2); border-bottom: 1px solid var(--border); }
+.jn-sched-none { font-size: 14px; color: var(--ink-soft); padding: 2px 0 4px; }
+.jn-sched-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  text-align: left;
+}
+.jn-sched-task { cursor: pointer; }
+.jn-sched-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jn-sched-src { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; color: var(--ink-soft); }
+@media (min-width: 900px) {
+  .jn-sched-task:hover { background: var(--bg-subtle); }
+}
 
 /* ink face */
 .jn-ink { padding: var(--s-3) 12px 0; }

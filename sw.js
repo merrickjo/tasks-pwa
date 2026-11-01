@@ -230,7 +230,8 @@
 // v51 -> v52: 4.6.1 Bigme fast ink bridge (journal.js, app.js, styles.css).
 // v52 -> v53: 4.6.2 one rebuild per change (journal.js, calendar.js, app.js).
 // v53 -> v54: 4.6.3 fast ink switched off (froze B10 / HiBreak).
-const CACHE_NAME = "tasks-shell-v54";
+// v54 -> v55: 4.7 journal ↔ Tasks/Calendar (send • and ○ lines, scheduled lines, × on done).
+const CACHE_NAME = "tasks-shell-v55";
 const SHELL = [
   "./",
   "./index.html",
