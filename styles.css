@@ -2732,3 +2732,152 @@ body.journal-active .bottom-scrim {
   letter-spacing: 0.04em;
   color: var(--ink-soft);
 }
+
+/* ===================================================================
+   4.8 — DESKTOP WORKSPACE.
+   ≥900px: the floating bottom bar becomes a left sidebar (same <nav>, same
+   buttons, same routing — only the layout changes). Content centres in the
+   space between the sidebar and, at ≥1280px, the TODAY pane on the right
+   (journal.js renders it). Phones and e-ink tablets below 900px are
+   untouched. Every fixed element (capture bar, scrim, sheets, toast) is
+   positioned against that content area, not the window:
+     content left  = --rail
+     content right = --today
+     column left   = --rail + max(0, (100% − --rail − --today − column) / 2)
+   =================================================================== */
+.rail-brand, .rail-keys { display: none; }
+.today-pane { display: none; }
+
+@media (min-width: 900px) {
+  :root { --rail: 184px; --today: 0px; }
+
+  body.app-shown { padding-left: var(--rail); padding-right: var(--today); }
+
+  /* --- sidebar --- */
+  .tabbar.gn {
+    --gn-bg: var(--bg) !important;
+    --gn-fg: var(--ink) !important;
+    --gn-active-bg: var(--ink) !important;
+    --gn-active-fg: var(--bg) !important;
+    --gn-border: var(--border) !important;
+    --gn-active-rule: transparent !important;
+    top: 0;
+    left: 0;
+    right: auto;
+    bottom: 0;
+    width: var(--rail);
+    max-width: none;
+    margin: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    padding: 20px 12px 16px;
+    border: 0;
+    border-right: 1px solid var(--border);
+    border-radius: 0;
+    background: var(--bg);
+  }
+  .tabbar .gn-item {
+    flex: none;
+    justify-content: space-between;
+    min-height: 40px;
+    padding: 0 12px;
+    border-radius: 8px;
+    font-size: 12px;
+  }
+  .tabbar .gn-item::after {
+    content: attr(data-key);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 400;
+    opacity: 0.55;
+  }
+  .tabbar .gn-item:not([aria-selected="true"]):hover { background: var(--bg-subtle); }
+  .rail-brand {
+    display: block;
+    padding: 4px 12px 18px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.24em;
+    color: var(--ink);
+  }
+  .rail-keys {
+    display: block;
+    margin-top: auto;
+    padding: 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.9;
+    color: var(--ink-soft);
+  }
+  .rail-keys span {
+    display: inline-block;
+    min-width: 26px;
+    color: var(--ink);
+  }
+  /* The phone hides the bar while a field has focus (soft keyboard). On a
+     desktop the sidebar must stay put while you type. */
+  body.keyboard-open .tabbar.gn { display: flex !important; }
+
+  /* --- the bottom stack loses the nav: capture sits on the floor --- */
+  .capture,
+  body.keyboard-open .capture {
+    bottom: 0;
+    left: calc(var(--rail) + max(0px, (100% - var(--rail) - var(--today) - var(--desk-col)) / 2));
+    right: calc(var(--today) + max(0px, (100% - var(--rail) - var(--today) - var(--desk-col)) / 2));
+  }
+  #app main, main#list { padding-bottom: calc(var(--capture-h) + 24px); }
+  #concursus-view, #calendar-view, #journal-view { padding-bottom: 40px; }
+  .bottom-scrim,
+  body.keyboard-open .bottom-scrim {
+    display: block !important;
+    height: calc(var(--capture-h) + 8px);
+    left: calc(var(--rail) + max(0px, (100% - var(--rail) - var(--today) - var(--desk-col)) / 2));
+    right: calc(var(--today) + max(0px, (100% - var(--rail) - var(--today) - var(--desk-col)) / 2));
+  }
+  body.calendar-active .bottom-scrim,
+  body.journal-active .bottom-scrim,
+  body.concursus-active .bottom-scrim { display: none !important; }
+
+  /* --- sheets, toast: centred on the content, not the window --- */
+  .edit-sheet {
+    left: calc(var(--rail) + max(0px, (100% - var(--rail) - var(--today) - 560px) / 2));
+    right: calc(var(--today) + max(0px, (100% - var(--rail) - var(--today) - 560px) / 2));
+  }
+  .toast { left: calc(var(--rail) + (100% - var(--rail) - var(--today)) / 2); }
+}
+
+@media (min-width: 1280px) {
+  body.today-on { --today: 340px; }
+
+  .today-pane {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 8;
+    width: var(--today);
+    overflow-y: auto;
+    padding: 20px 20px 32px;
+    box-sizing: border-box;
+    background: var(--bg);
+    color: var(--ink);
+    border-left: 1px solid var(--border);
+  }
+  body.today-on .today-pane { display: block; }
+
+  .td-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: var(--s-2); }
+  .td-title { font-family: var(--ck-title); font-size: 22px; font-weight: 600; line-height: 1.2; }
+  .today-pane .jn-cc.td-cc { cursor: pointer; }
+  .today-pane .jn-cc.td-cc:hover { background: var(--bg-subtle); }
+  .today-pane .jn-sched-row { font-size: 14px; }
+  .today-pane .jn-text { font-size: 15px; }
+  .today-pane .jn-sig-btn { min-width: 34px; min-height: 32px; font-size: 16px; }
+  .today-pane .jn-actions { padding-right: 0; }
+
+  /* the Tasks tab's own AGENDA block would repeat the pane — drop it here */
+  body.today-on #list .agenda-group-label,
+  body.today-on #list .agenda-row,
+  body.today-on #list .agenda-more { display: none; }
+}

@@ -9,7 +9,7 @@
 // return [] for both, which rendered a connection error over a real "No
 // open tasks" state. One-time fallback reads the old bare-array key.
 // 4.3.3 — shown on the date line so "which version am I on?" is answerable at a glance.
-const APP_BUILD = "v4.7.0";
+const APP_BUILD = "v4.8.0";
 const CACHE_KEY = "tasks-cache-v2";
 const LEGACY_CACHE_KEY = "tasks-cache-v1";
 const CFG_KEY = "tasks-cfg-v1";
@@ -143,6 +143,25 @@ function showApp() {
   document.getElementById("app").style.display = "block";
   document.getElementById("tabbar").style.display = "flex";
   document.getElementById("bottom-scrim").style.display = "block";
+  document.body.classList.add("app-shown"); // 4.8: desktop shell (sidebar) keys off this
+  syncTodayPane();
+}
+
+// --- 4.8: desktop TODAY pane --------------------------------------------------
+// Mounted only while the window is wide enough to show it (≥1280px, same
+// breakpoint as styles.css), so phones and tablets never fetch for it.
+const TODAY_MQ = window.matchMedia ? window.matchMedia("(min-width: 1280px)") : null;
+function syncTodayPane() {
+  if (typeof NOTCH_JOURNAL === "undefined" || !getConfig()) return;
+  const pane = document.getElementById("today-pane");
+  const wide = !!(TODAY_MQ && TODAY_MQ.matches) && document.body.classList.contains("app-shown");
+  document.body.classList.toggle("today-on", wide);
+  if (wide) NOTCH_JOURNAL.mountToday(pane);
+  else NOTCH_JOURNAL.unmountToday();
+}
+if (TODAY_MQ) {
+  if (TODAY_MQ.addEventListener) TODAY_MQ.addEventListener("change", syncTodayPane);
+  else if (TODAY_MQ.addListener) TODAY_MQ.addListener(syncTodayPane);
 }
 
 document.getElementById("cfg-save").addEventListener("click", () => {
@@ -492,6 +511,8 @@ function setCollapsed(map) { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(m
 
 // --- rendering ---
 function render(allTasks) {
+  // 4.8: the desktop Today pane lists tasks due today — keep it current.
+  if (typeof NOTCH_JOURNAL !== "undefined") NOTCH_JOURNAL.todaySoon();
   const view = getView(activeView);
   const tasks = viewTasks(allTasks, view.id);
   const list = document.getElementById("list");
@@ -1694,6 +1715,7 @@ function initTabRouter() {
 //   1 / 2 / 3 / 4 Tasks / Calendar / Journal / CONCURSUS (4.6: follows the bar)
 //   Journal:      [ ]  previous / next spread · t  today · m w d  month/week/day
 //   n             new task (Tasks capture bar)
+//   l             today's rapid log (4.8 desktop Today pane, ≥1280px)
 //   Calendar:     ← →  day · ↑ ↓  week · [ ]  month · t  today · e  add event
 //   Esc           closes the calendar's add-event sheet (the task sheet
 //                 already handles its own Esc)
@@ -1713,6 +1735,7 @@ document.addEventListener("keydown", (e) => {
     document.getElementById("new-title").focus();
     return;
   }
+  if (e.key === "l" && typeof NOTCH_JOURNAL !== "undefined" && NOTCH_JOURNAL.focusToday()) { e.preventDefault(); return; }
   if (activeTab === "journal" && typeof NOTCH_JOURNAL !== "undefined") {
     const jn = {
       "[": () => NOTCH_JOURNAL.prev(),
@@ -1839,4 +1862,6 @@ if (!cfg || !cfg.url || !cfg.key) {
   // the remembered tab is "concursus". DOMContentLoaded fires only after
   // every synchronous script in the document has run.
   document.addEventListener("DOMContentLoaded", initTabRouter);
+  // 4.8 — journal.js (which renders the Today pane) is a later <script>.
+  document.addEventListener("DOMContentLoaded", syncTodayPane);
 }

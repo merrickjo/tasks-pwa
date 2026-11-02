@@ -154,12 +154,20 @@
      .bottom-scrim comment. Same visibility lifecycle as #tabbar. -->
 <div class="bottom-scrim" id="bottom-scrim" style="display:none"></div>
 
+<!-- 4.8: on desktop (≥900px) this same nav becomes the left sidebar; the
+     brand and key hints only show there (styles.css). -->
 <nav class="tabbar gn" id="tabbar" style="display:none" role="tablist" aria-label="Primary">
-  <button class="tab-btn gn-item active" data-tab="tasks" role="tab" aria-selected="true">TASKS</button>
-  <button class="tab-btn gn-item" data-tab="calendar" role="tab" aria-selected="false">CALENDAR</button>
-  <button class="tab-btn gn-item" data-tab="journal" role="tab" aria-selected="false">JOURNAL</button>
-  <button class="tab-btn gn-item" data-tab="concursus" role="tab" aria-selected="false">CONCURSUS</button>
+  <div class="rail-brand" aria-hidden="true">NOTCH</div>
+  <button class="tab-btn gn-item active" data-tab="tasks" data-key="1" role="tab" aria-selected="true">TASKS</button>
+  <button class="tab-btn gn-item" data-tab="calendar" data-key="2" role="tab" aria-selected="false">CALENDAR</button>
+  <button class="tab-btn gn-item" data-tab="journal" data-key="3" role="tab" aria-selected="false">JOURNAL</button>
+  <button class="tab-btn gn-item" data-tab="concursus" data-key="4" role="tab" aria-selected="false">CONCURSUS</button>
+  <div class="rail-keys" aria-hidden="true"><span>n</span> new task<br><span>l</span> today's log<br><span>[ ]</span> back · next<br><span>t</span> today</div>
 </nav>
+
+<!-- 4.8 TODAY pane — desktop ≥1280px only. journal.js renders it
+     (NOTCH_JOURNAL.mountToday); app.js mounts it when the window is wide. -->
+<aside id="today-pane" class="today-pane" aria-label="Today"></aside>
 
 <script src="app.js"></script>
 <script src="concursus.js"></script>

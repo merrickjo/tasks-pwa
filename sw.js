@@ -231,7 +231,8 @@
 // v52 -> v53: 4.6.2 one rebuild per change (journal.js, calendar.js, app.js).
 // v53 -> v54: 4.6.3 fast ink switched off (froze B10 / HiBreak).
 // v54 -> v55: 4.7 journal ↔ Tasks/Calendar (send • and ○ lines, scheduled lines, × on done).
-const CACHE_NAME = "tasks-shell-v55";
+// v55 -> v56: 4.8 desktop workspace — sidebar + Today pane (index.html, app.js, journal.js, styles.css).
+const CACHE_NAME = "tasks-shell-v56";
 const SHELL = [
   "./",
   "./index.html",

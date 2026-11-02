@@ -35,6 +35,22 @@ wrangler deploy
 ```
 (`schema.sql` is all `CREATE … IF NOT EXISTS`, so re-running it is safe.)
 
+## Desktop workspace (4.8)
+
+Same app, same URL — the layout changes with the window width:
+- **Under 900px** (phones, Bigme, HiBreak): unchanged — bottom tab bar.
+- **900px and up:** the tab bar becomes a left sidebar (with key hints);
+  each tab centres in the space beside it. The sidebar stays put while you
+  type.
+- **1280px and up:** a **Today** pane on the right — CONCURSUS strip (click
+  for the tab), what's scheduled today (events + tasks due), and today's
+  rapid log with its own send button. It is the same page as Journal → Day
+  for today; typing in either updates the other. The Tasks tab's AGENDA
+  block hides here because the pane already shows it.
+
+Keys: `1`–`4` tabs · `n` new task · `l` today's log · Journal `[ ]` `t`
+`m w d` · Calendar arrows `[ ]` `t` `e` · `Esc` closes the event sheet.
+
 ## Journal (4.6 · Worker v11)
 
 JOURNAL tab: Month / Week / Day spreads, each with a Type face (template

@@ -498,6 +498,7 @@ const NOTCH_JOURNAL = (function () {
     root.appendChild(body);
     if (r.entry.mode === "ink") requestAnimationFrame(() => { canvases.forEach((c) => c.resize()); nativeStart(); });
     else nativeStop();
+    todaySoon();
   }
 
   function titleFor() {
@@ -581,17 +582,30 @@ const NOTCH_JOURNAL = (function () {
     ta.placeholder = placeholder || "";
     ta.rows = opts.rows || 3;
     ta.dataset.section = id;
+    ta.dataset.key = key;
     ta.spellcheck = true;
     const fit = () => { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + 2 + "px"; };
     ta.addEventListener("input", () => {
       r.entry.sections[id] = ta.value;
       fit();
+      mirror(key, id, ta);
       markText(key);
       if (opts.onInput) opts.onInput();
     });
     ta.addEventListener("blur", () => { if (rec(key).dirtyText) { clearTimeout(timers["text:" + key]); flushText(key); } });
     requestAnimationFrame(fit);
     return ta;
+  }
+  // 4.8 — the same page can be open twice (Journal → Day for today and the
+  // desktop Today pane). Typing in one updates its twin in place: no
+  // rebuild, no lost caret.
+  function mirror(key, id, src) {
+    document.querySelectorAll("textarea.jn-text").forEach((t) => {
+      if (t === src || t.dataset.key !== key || t.dataset.section !== id) return;
+      t.value = src.value;
+      t.style.height = "auto"; t.style.height = t.scrollHeight + 2 + "px";
+    });
+    fillSendRow();
   }
   function signifierBar(ta) {
     const bar = el("div", "jn-sigbar");
@@ -673,9 +687,9 @@ const NOTCH_JOURNAL = (function () {
     if (end <= start) return null;
     return { title: m[5].trim(), start, end };
   }
-  function pendingIn(r) {
+  function pendingIn(r, sections) {
     const out = [];
-    datedSections().forEach(([id, date]) => {
+    (sections || datedSections()).forEach(([id, date]) => {
       (r.entry.sections[id] || "").split("\n").forEach((raw) => {
         let m = TASK_LINE.exec(raw);
         if (m) { out.push({ id, date, raw, indent: m[1], rest: m[2].trim(), kind: "task" }); return; }
@@ -686,8 +700,8 @@ const NOTCH_JOURNAL = (function () {
     return out;
   }
   let sending = false;
-  async function sendAll(key, r, btn) {
-    const items = pendingIn(r);
+  async function sendAll(key, r, btn, sections) {
+    const items = pendingIn(r, sections);
     if (!items.length || sending) return;
     sending = true;
     btn.disabled = true;
@@ -742,33 +756,38 @@ const NOTCH_JOURNAL = (function () {
       loadIndex(true);
     }
     renderTasksTab();
-    render();
+    if (root && root.style.display !== "none") render();
+    renderToday();
   }
   function renderTasksTab() {
     // app.js's top-level render() is shadowed inside this module; reach it
     // through window (classic-script function declarations live there).
     try { const s = sortTasks(getCache()); renderChips(s); if (typeof window.render === "function") window.render(s); } catch {}
   }
-  function sendLabel(r) {
-    const items = pendingIn(r);
+  function sendLabel(r, sections) {
+    const items = pendingIn(r, sections);
     const t = items.filter((x) => x.kind === "task").length;
     const e = items.length - t;
     if (!items.length) return ["• → Tasks · ○ → Calendar", false];
     return [`Send ${[t ? t + " •" : "", e ? e + " ○" : ""].filter(Boolean).join(" · ")} →`, true];
   }
+  // A send row knows its own sections, so the main spread and the Today
+  // pane (4.8) each get one.
+  function makeSendRow(key, r, sections) {
+    const row = el("div", "jn-actions");
+    row._fill = () => {
+      if (sending) return;
+      const [label, on] = sendLabel(r, sections);
+      const b = button("jn-link-btn", label, null, () => sendAll(key, r, b, sections));
+      b.disabled = !on;
+      row.replaceChildren(b);
+    };
+    row._fill();
+    return row;
+  }
   let sendRowEl = null;
-  function sendRow(key, r) {
-    sendRowEl = el("div", "jn-actions");
-    fillSendRow(key, r);
-    return sendRowEl;
-  }
-  function fillSendRow(key, r) {
-    if (!sendRowEl || sending) return;
-    const [label, on] = sendLabel(r);
-    const b = button("jn-link-btn", label, null, () => sendAll(key, r, b));
-    b.disabled = !on;
-    sendRowEl.replaceChildren(b);
-  }
+  function sendRow(key, r) { sendRowEl = makeSendRow(key, r, datedSections()); return sendRowEl; }
+  function fillSendRow() { if (sendRowEl) sendRowEl._fill(); if (todayPane.row) todayPane.row._fill(); }
 
   // BACK: a linked "> x" whose task is done becomes "× x". Runs inside
   // render() only, so it never edits text under a cursor.
@@ -806,6 +825,8 @@ const NOTCH_JOURNAL = (function () {
       doneAt = Date.now();
       const cur = all()[currentKey()];
       if (cur && linksOf(cur).some((l) => l.k === "task" && doneIds.has(l.id))) renderSoon(true);
+      const td = all()[keyFor("day", todayISO())];
+      if (td && linksOf(td).some((l) => l.k === "task" && doneIds.has(l.id))) todaySoon(true);
     }).catch(() => {}).finally(() => { doneLoading = false; });
   }
 
@@ -815,8 +836,8 @@ const NOTCH_JOURNAL = (function () {
     const d = new Date(s);
     return isNaN(d) ? "" : pad2(d.getHours()) + ":" + pad2(d.getMinutes());
   }
-  function scheduledFor(date, r) {
-    const range = rangeFor();
+  function scheduledFor(date, r, range) {
+    range = range || rangeFor();
     const idx = cachedIndex(range);
     const sent = new Set(linksOf(r).map((l) => l.id).filter(Boolean));
     const evs = ((idx && idx.cal) || []).filter((e) => e.date === date && !sent.has(e.id))
@@ -831,8 +852,8 @@ const NOTCH_JOURNAL = (function () {
     setActiveTab("tasks");
     openEditSheet(t, null);
   }
-  function scheduledBlock(date, r) {
-    const { evs, tasks } = scheduledFor(date, r);
+  function scheduledBlock(date, r, range) {
+    const { evs, tasks } = scheduledFor(date, r, range);
     const wrap = el("div", "jn-sched");
     wrap.appendChild(sectionLabel("Scheduled", "from Calendar and Tasks · read-only"));
     if (!evs.length && !tasks.length) { wrap.appendChild(el("div", "jn-sched-none", "Nothing scheduled.")); return wrap; }
@@ -880,7 +901,7 @@ const NOTCH_JOURNAL = (function () {
     wrap.appendChild(sectionLabel("Rapid log", "• task  ○ event  – note  × done  > migrated"));
     const ta = textArea(key, r, "log", "• call the venue\n○ 14:00 product review\n– idea: …", {
       rows: 10,
-      onInput: () => fillSendRow(key, r),
+      onInput: () => fillSendRow(),
     });
     wrap.appendChild(signifierBar(ta));
     wrap.appendChild(ta);
@@ -911,7 +932,7 @@ const NOTCH_JOURNAL = (function () {
       row.appendChild(head);
       const sched = scheduledLine(date, r, 4);
       if (sched) row.appendChild(el("div", "jn-in", sched));
-      const ta = trackField(textArea(key, r, "d" + i, "plan", { rows: 1, small: true, onInput: () => fillSendRow(key, r) }));
+      const ta = trackField(textArea(key, r, "d" + i, "plan", { rows: 1, small: true, onInput: () => fillSendRow() }));
       fields.push(ta);
       row.appendChild(ta);
       const peek = idx && idx.days && idx.days[date];
@@ -952,7 +973,7 @@ const NOTCH_JOURNAL = (function () {
       line.type = "text";
       const id = "l" + String(d.getDate()).padStart(2, "0");
       line.value = r.entry.sections[id] || "";
-      line.addEventListener("input", () => { r.entry.sections[id] = line.value; markText(key); fillSendRow(key, r); });
+      line.addEventListener("input", () => { r.entry.sections[id] = line.value; markText(key); fillSendRow(); });
       line.addEventListener("blur", () => { if (rec(key).dirtyText) { clearTimeout(timers["text:" + key]); flushText(key); } });
       trackField(line);
       fields.push(line);
@@ -969,7 +990,7 @@ const NOTCH_JOURNAL = (function () {
     wrap.appendChild(list);
 
     wrap.appendChild(sectionLabel("Tasks", "this month's list — • lines go to Tasks with no date"));
-    const ta = textArea(key, r, "tasks", "", { rows: 5, onInput: () => fillSendRow(key, r) });
+    const ta = textArea(key, r, "tasks", "", { rows: 5, onInput: () => fillSendRow() });
     wrap.appendChild(signifierBar(ta));
     wrap.appendChild(ta);
     wrap.appendChild(sendRow(key, r));
@@ -1416,6 +1437,118 @@ const NOTCH_JOURNAL = (function () {
     }, { passive: true });
   }
 
+  // ---------- 4.8 TODAY pane (desktop ≥1280px) ----------
+  // A fixed right-hand column that always shows today: CONCURSUS, what's
+  // scheduled (calendar + tasks due), and today's rapid log with its send
+  // button. It edits the same page as Journal → Day for today — one record,
+  // one sync path; twin fields mirror each other as you type.
+  const todayPane = { el: null, row: null, sig: "", queued: false, force: false, timer: null, date: "" };
+  function todayRange() { const d = todayISO(); return { from: d, to: d, days: [d] }; }
+  function todaySig() {
+    const d = todayISO();
+    const key = keyFor("day", d);
+    const rr = all()[key];
+    const range = todayRange();
+    const idx = cachedIndex(range);
+    return [d, hashStr(JSON.stringify((rr && rr.entry.sections) || {})),
+      hashStr(JSON.stringify((idx && idx.cal) || [])),
+      hashStr(JSON.stringify(dueInRange(range))),
+      hashStr(JSON.stringify(concursusFor(range)))].join("§");
+  }
+  function renderToday() {
+    if (!todayPane.el) return;
+    const d = todayISO();
+    const key = keyFor("day", d);
+    const r = rec(key);
+    applyDone(key, r);
+    maybeLoadDone(r);
+    todayPane.sig = todaySig();
+    todayPane.date = d;
+    const pane = todayPane.el;
+    pane.replaceChildren();
+    const head = el("div", "td-head");
+    const titles = el("div", "td-titles");
+    titles.appendChild(el("div", "jn-kicker", "Today"));
+    titles.appendChild(el("div", "td-title", parseISO(d).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })));
+    head.appendChild(titles);
+    head.appendChild(button("jn-day-open", "day ›", "Open today's daily log", () => {
+      view = "day"; anchor = d; saveViewState();
+      if (typeof setActiveTab === "function") setActiveTab("journal");
+      go("day", d);
+    }));
+    pane.appendChild(head);
+    const cc = ccStrip(d);
+    cc.classList.add("td-cc");
+    cc.setAttribute("role", "button");
+    cc.tabIndex = 0;
+    cc.setAttribute("aria-label", "Open CONCURSUS");
+    const toCc = () => { if (typeof setActiveTab === "function") setActiveTab("concursus"); };
+    cc.addEventListener("click", toCc);
+    cc.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toCc(); } });
+    pane.appendChild(cc);
+    pane.appendChild(scheduledBlock(d, r, todayRange()));
+    pane.appendChild(sectionLabel("Rapid log", "• task  ○ event  – note"));
+    const ta = textArea(key, r, "log", "• call the venue\n○ 14:00 product review\n– idea: …", { rows: 6, onInput: () => fillSendRow() });
+    ta.id = "today-log";
+    pane.appendChild(signifierBar(ta));
+    pane.appendChild(ta);
+    todayPane.row = makeSendRow(key, r, [["log", d]]);
+    pane.appendChild(todayPane.row);
+  }
+  function todaySoon(force) {
+    if (!todayPane.el) return;
+    if (force) todayPane.force = true;
+    if (todayPane.queued) return;
+    todayPane.queued = true;
+    requestAnimationFrame(() => {
+      todayPane.queued = false;
+      if (!todayPane.el) return;
+      // Never rebuild under the cursor; the twin-field mirror keeps it current.
+      const a = document.activeElement;
+      if (a && todayPane.el.contains(a) && (a.tagName === "TEXTAREA" || a.tagName === "INPUT")) return;
+      if (!todayPane.force && todayPane.date === todayISO() && todaySig() === todayPane.sig) return;
+      todayPane.force = false;
+      renderToday();
+    });
+  }
+  async function refreshToday(force) {
+    if (!todayPane.el || !getConfig()) return;
+    const range = todayRange();
+    const key = keyFor("day", range.from);
+    const c = cachedIndex(range);
+    await Promise.all([
+      fetchEntry(key, force).catch(() => {}),
+      (force || !c || !c.cal || Date.now() - c.fetchedAt >= REFETCH_MS) ? fetchIndex("day", range, c).catch(() => {}) : null,
+    ]);
+    todaySoon();
+  }
+  function mountToday(node) {
+    if (!node || todayPane.el === node) return;
+    todayPane.el = node;
+    renderToday();
+    refreshToday();
+    flushAll();
+    if (typeof CONCURSUS !== "undefined") CONCURSUS.subscribe(() => todaySoon());
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refreshToday(); });
+    clearInterval(todayPane.timer);
+    // The calendar changes under us (new invites, the Mac's Outlook push).
+    todayPane.timer = setInterval(() => { if (document.visibilityState === "visible") refreshToday(); }, 2 * 60 * 1000);
+  }
+  function unmountToday() {
+    clearInterval(todayPane.timer);
+    if (todayPane.el) todayPane.el.replaceChildren();
+    todayPane.el = null; todayPane.row = null;
+  }
+  function focusToday() {
+    const t = document.getElementById("today-log");
+    if (!t || !t.offsetParent) return false;
+    t.focus();
+    // Jotting is the point: land on a fresh line.
+    if (t.value && !t.value.endsWith("\n")) { t.value += "\n"; t.dispatchEvent(new Event("input")); }
+    t.setSelectionRange(t.value.length, t.value.length);
+    return true;
+  }
+
   // ---------- navigation ----------
   function saveViewState() { try { sessionStorage.setItem(VIEW_KEY, JSON.stringify({ view, anchor })); } catch {} }
   // An untouched page (nothing typed, nothing inked, nothing pending) opens in
@@ -1488,6 +1621,7 @@ const NOTCH_JOURNAL = (function () {
 
   return {
     init, refresh, background,
+    mountToday, unmountToday, todaySoon, focusToday,
     pause: () => nativeStop(),
     openDay: (date) => { view = "day"; anchor = date; saveViewState(); },
     prev: () => shift(-1), next: () => shift(1), today: () => go(view, todayISO()),
