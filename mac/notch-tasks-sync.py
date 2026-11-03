@@ -392,6 +392,16 @@ def run(vault, dry):
     base = state.setdefault("tasks", {})
     pbase = state.setdefault("project_ids", {})   # v12: last synced project_id per task
     names = project_names(vault)
+    # Guard: until Worker v12 is deployed, D1 can't store project_id. Then
+    # the vault's links are left alone and nothing is recorded as synced
+    # (recording would make the first v12 run read "phone removed it").
+    try:
+        api.call("GET", "/api/sync/projects")
+        v12 = True
+    except RuntimeError:
+        v12 = False
+        pbase = {}
+        log("worker has no /api/sync/projects yet: project links not synced this pass")
 
     rows = {r["id"]: r for r in api.call("GET", "/api/sync/tasks").get("tasks", [])}
     notes, no_id, dupes = scan_vault(folder)
@@ -429,7 +439,7 @@ def run(vault, dry):
         if rec and row:
             vp, rp, bp = valid_pid(rec["fm"].get("project_id")), valid_pid(row.get("project_id")), pbase.get(tid)
             v_ts = max(str(rec["fm"].get("updated_at") or ""), mtime_iso(rec["mtime"]))
-            mp = merge_pid(vp, rp, bp, v_ts, str(row.get("updated_at") or ""))
+            mp = merge_pid(vp, rp, bp, v_ts, str(row.get("updated_at") or "")) if v12 else vp
             if vh == rh:
                 base[tid] = vh
                 if mp != vp:     # phone linked/unlinked the task: write the note
@@ -438,7 +448,7 @@ def run(vault, dry):
                         atomic_write(rec["path"], render_note(rec["fm"], rec["body"]))
                     stats["linked"] += 1
                     log(f"link D1 -> vault {rec['fields']['title'][:60]}")
-                if mp != rp:     # vault linked/unlinked it: push the row
+                if mp != rp and v12:     # vault linked/unlinked it: push the row
                     ts = now_iso()
                     set_pid(rec["fm"], mp, names)
                     rec["fm"]["updated_at"] = ts
@@ -486,7 +496,7 @@ def run(vault, dry):
                     atomic_write(path, render_note(fm, body))
                 stats["pulled"] += 1
                 base[tid] = rh
-                if mp != rp:   # the vault's link survives a phone edit of other fields
+                if mp != rp and v12:   # the vault's link survives a phone edit of other fields
                     pushed = dict(row, project_id=mp, labels=norm_fields(row)["labels"])
                     api.call("PUT", f"/api/sync/tasks/{tid}", pushed)
                     stats["linked"] += 1
