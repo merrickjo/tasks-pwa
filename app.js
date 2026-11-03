@@ -9,7 +9,7 @@
 // return [] for both, which rendered a connection error over a real "No
 // open tasks" state. One-time fallback reads the old bare-array key.
 // 4.3.3 — shown on the date line so "which version am I on?" is answerable at a glance.
-const APP_BUILD = "v4.8.0";
+const APP_BUILD = "v4.9.0";
 const CACHE_KEY = "tasks-cache-v2";
 const LEGACY_CACHE_KEY = "tasks-cache-v1";
 const CFG_KEY = "tasks-cfg-v1";
@@ -308,6 +308,14 @@ const VIEWS = [
     match: (t) => t.area === "Blibli" && dueDate(t.due) !== null && dueDate(t.due) <= todayISO(),
   },
   {
+    // 4.9: tasks grouped under their project (Obsidian project notes,
+    // mirrored as /api/projects). Header carries the project's next step.
+    id: "Projects", label: "Projects", defaultArea: "",
+    grouping: "project",
+    empty: "No task is tied to a project yet. Open a task and pick one.",
+    match: (t) => !!t.projectId,
+  },
+  {
     id: "Weekend", label: "Weekend", defaultArea: "Family",
     grouping: "date",
     empty: "Weekend is open. Go live it.",
@@ -554,6 +562,8 @@ function render(allTasks) {
 
   if (view.grouping === "area") {
     renderAreaGroups(list, tasks);
+  } else if (view.grouping === "project") {
+    renderProjectGroups(list, tasks);
   } else {
     renderDateGroups(list, tasks);
   }
@@ -909,6 +919,93 @@ function renderDateGroups(list, tasks) {
 // that IS the domain balance signal, previewing 2.2 before it ships.
 // Tasks with no Area land in a trailing "No Area" group (shown only when
 // nonempty — an empty triage bucket carries no signal).
+// --- 4.9 projects (Worker v12) ---
+// Read-mostly mirror of the Obsidian project notes. Cached like tasks so the
+// edit sheet's picker and the Projects view work offline.
+const PROJECTS_KEY = "notch-projects-v1";
+const SPACE_LABEL = { work: "Work", ministry: "Ministry", study: "Study" };
+function getProjects() {
+  try { const v = JSON.parse(localStorage.getItem(PROJECTS_KEY)); return Array.isArray(v) ? v : []; }
+  catch { return []; }
+}
+function setProjects(list) { try { localStorage.setItem(PROJECTS_KEY, JSON.stringify(list)); } catch { /* full */ } }
+function projectById(id) { return id ? getProjects().find((p) => p.id === id) || null : null; }
+async function refreshProjects() {
+  try {
+    const { projects } = await apiFetch("/api/projects");
+    setProjects(projects || []);
+    if (hasCacheMetadata()) render(sortTasks(getCache()));
+  } catch { /* offline or pre-v12 Worker: keep the cached list */ }
+}
+function fillProjectSelect(sel, currentId) {
+  sel.innerHTML = "";
+  const none = document.createElement("option");
+  none.value = ""; none.textContent = "No project";
+  sel.appendChild(none);
+  const list = getProjects().filter((p) => p.status !== "Done" || p.id === currentId);
+  ["work", "ministry", "study", null].forEach((sp) => {
+    const items = list.filter((p) => (p.space || null) === sp);
+    if (!items.length) return;
+    const g = document.createElement("optgroup");
+    g.label = sp ? SPACE_LABEL[sp] : "Other";
+    items.forEach((p) => {
+      const o = document.createElement("option");
+      o.value = p.id;
+      o.textContent = p.status === "Paused" ? `${p.title} (paused)` : p.title;
+      g.appendChild(o);
+    });
+    sel.appendChild(g);
+  });
+  // A task can point at a project this device hasn't fetched yet; keep it.
+  if (currentId && !list.some((p) => p.id === currentId)) {
+    const o = document.createElement("option");
+    o.value = currentId; o.textContent = "(project not synced yet)";
+    sel.appendChild(o);
+  }
+  sel.value = currentId || "";
+}
+function renderProjectGroups(list, tasks) {
+  const collapsed = getCollapsed();
+  const byId = new Map();
+  tasks.forEach((t) => { if (!byId.has(t.projectId)) byId.set(t.projectId, []); byId.get(t.projectId).push(t); });
+  const groups = [...byId.entries()].map(([id, items]) => ({ id, p: projectById(id), items }))
+    .sort((a, b) => {
+      const da = a.p && a.p.nextDue, db = b.p && b.p.nextDue;
+      if (da && db && da !== db) return da < db ? -1 : 1;
+      if (da && !db) return -1;
+      if (db && !da) return 1;
+      return ((a.p && a.p.title) || "").localeCompare((b.p && b.p.title) || "");
+    });
+  groups.forEach((g) => {
+    const key = "P:" + g.id;
+    const isCollapsed = !!collapsed[key];
+    const head = document.createElement("button");
+    head.className = "area-head project-head" + (isCollapsed ? " collapsed" : "");
+    const title = g.p ? g.p.title : "Project not synced yet";
+    const next = g.p && g.p.next ? g.p.next : "";
+    const when = g.p && g.p.nextDue ? dueLabel(g.p.nextDue) : null;
+    head.innerHTML =
+      `<span class="project-text"><span class="area-name"></span><span class="project-next"></span></span>` +
+      `<span class="area-count">${g.items.length}</span>` +
+      `<svg class="area-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6,9 12,15 18,9"/></svg>`;
+    head.querySelector(".area-name").textContent = title;
+    head.querySelector(".project-next").textContent = next ? (when ? `${next} · ${when.text}` : next) : "";
+    const bodyWrap = document.createElement("div");
+    bodyWrap.className = "group-body" + (isCollapsed ? " collapsed" : "");
+    g.items.forEach((t) => bodyWrap.appendChild(renderRow(t, { inProject: true })));
+    head.addEventListener("click", () => {
+      if (wasDrag()) return;
+      const map = getCollapsed();
+      map[key] = !map[key];
+      setCollapsed(map);
+      head.classList.toggle("collapsed", map[key]);
+      bodyWrap.classList.toggle("collapsed", map[key]);
+    });
+    list.appendChild(head);
+    list.appendChild(bodyWrap);
+  });
+}
+
 function renderAreaGroups(list, tasks) {
   const collapsed = getCollapsed();
   const groups = AREAS.map((a) => ({
@@ -1061,6 +1158,16 @@ function renderRow(task, opts = {}) {
     // row — it keeps the mark even though the All view's header has one.
     areaTag.textContent = a && a.mark ? `${a.mark} ${task.area}` : task.area;
     meta.appendChild(areaTag);
+  }
+
+  if (task.projectId && !opts.inProject) {
+    const p = projectById(task.projectId);
+    if (p) {
+      const projTag = document.createElement("span");
+      projTag.className = "tag project-tag";
+      projTag.textContent = p.title.length > 26 ? p.title.slice(0, 25).trimEnd() + "…" : p.title;
+      meta.appendChild(projTag);
+    }
   }
 
   if (task.label) {
@@ -1228,6 +1335,8 @@ function openEditSheet(task, triggerEl) {
   document.getElementById("edit-title").value = task.title || "";
   document.getElementById("edit-priority").value = task.priority || "P3 - Medium";
   document.getElementById("edit-area").value = task.area || "";
+  const projSel = document.getElementById("edit-project");
+  if (projSel) fillProjectSelect(projSel, task.projectId || "");
   renderEditDueChips();
   editSaving = false;
   showEditMsg("");
@@ -1292,11 +1401,14 @@ function isEditDirty() {
   const { trimmed: title } = editTitleValidation();
   const priority = document.getElementById("edit-priority").value;
   const area = document.getElementById("edit-area").value;
+  const projSel = document.getElementById("edit-project");
+  const projectId = projSel ? projSel.value : (editOriginal.projectId || "");
   const origDue = editOriginal.due ? dueDate(editOriginal.due) : "";
   return (
     title !== (editOriginal.title || "") ||
     priority !== (editOriginal.priority || "") ||
     area !== (editOriginal.area || "") ||
+    projectId !== (editOriginal.projectId || "") ||
     editDue !== origDue
   );
 }
@@ -1347,6 +1459,7 @@ document.getElementById("edit-due-custom").addEventListener("change", (e) => {
 document.getElementById("edit-title").addEventListener("input", updateSaveButton);
 document.getElementById("edit-priority").addEventListener("change", updateSaveButton);
 document.getElementById("edit-area").addEventListener("change", updateSaveButton);
+if (document.getElementById("edit-project")) document.getElementById("edit-project").addEventListener("change", updateSaveButton);
 
 // Clean dismiss closes silently; a dirty dismiss confirms first. Cancel,
 // backdrop tap, and swipe-down all route through here so the rule is
@@ -1447,6 +1560,8 @@ async function saveEdit() {
   if (title !== (before.title || "")) payload.title = title;
   if (priority !== (before.priority || "")) payload.priority = priority;
   if (area !== (before.area || "")) payload.area = area || null;
+  const projSel = document.getElementById("edit-project");
+  if (projSel && projSel.value !== (before.projectId || "")) payload.projectId = projSel.value || null;
   if (due !== origDue) payload.due = due || null;
   if (!Object.keys(payload).length) { closeEditSheet(); return; }
 
@@ -1503,6 +1618,7 @@ async function boot() {
   if (hasCacheMetadata()) render(cached);
 
   refreshAgenda(); // 4.3 — parallel, never awaited
+  refreshProjects(); // 4.9 — parallel, never awaited
   // 4.6 — CONCURSUS history and any offline journal edits go up on every
   // boot, even when the JOURNAL tab is never opened on this device. The
   // timeout lets journal.js (loaded after this file) finish defining itself.

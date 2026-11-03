@@ -2881,3 +2881,10 @@ body.journal-active .bottom-scrim {
   body.today-on #list .agenda-row,
   body.today-on #list .agenda-more { display: none; }
 }
+
+/* 4.9 — projects: header carries the project's next step; rows get a quiet tag */
+.project-head { align-items: flex-start; }
+.project-head .project-text { display: flex; flex-direction: column; min-width: 0; flex: 1; text-align: left; }
+.project-head .area-name { white-space: normal; }
+.project-head .project-next { font-size: 13px; font-weight: 400; opacity: .8; white-space: normal; margin-top: 2px; text-transform: none; letter-spacing: 0; }
+.tag.project-tag { text-transform: none; letter-spacing: .01em; }

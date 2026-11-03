@@ -12,9 +12,11 @@ CREATE TABLE IF NOT EXISTS tasks (
   source       TEXT,
   recurrence   TEXT,
   created_at   TEXT NOT NULL,
-  updated_at   TEXT NOT NULL
+  updated_at   TEXT NOT NULL,
+  project_id   TEXT                         -- v12: projects.id (uuid)
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_status_due ON tasks(status, due);
+CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_completed ON tasks(status, completed_at);
 
 -- calendar mirror (1 Oct 2026) — work meetings pushed from the Mac by
@@ -70,3 +72,18 @@ CREATE TABLE IF NOT EXISTS concursus_days (
   notch         INTEGER NOT NULL DEFAULT 0,
   at            TEXT NOT NULL               -- client timestamp, last write wins
 );
+
+-- projects (v12, 3 Nov 2026) — mirror of the Obsidian project notes
+-- (type: project). See migrations/0012_projects.sql for an existing DB.
+CREATE TABLE IF NOT EXISTS projects (
+  id          TEXT PRIMARY KEY,
+  title       TEXT NOT NULL,
+  space       TEXT,
+  status      TEXT NOT NULL DEFAULT 'Active',
+  description TEXT NOT NULL DEFAULT '',
+  next        TEXT NOT NULL DEFAULT '',
+  next_due    TEXT,
+  due         TEXT,
+  updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status, next_due);

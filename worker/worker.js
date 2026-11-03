@@ -1,5 +1,9 @@
 // Tasks API — Cloudflare Worker + D1
 //
+// v12 (3 Nov 2026): + projects. Tasks carry `projectId` (the project's
+//   uuid, same id as the `id` property on the Obsidian project note).
+//   /api/projects (list, create), /api/projects/:id (edit), and
+//   /api/sync/projects (Mac mirror). Needs migrations/0012_projects.sql.
 // v11.1 (1 Nov 2026): journal index ignores "_"-prefixed sections (4.7 links).
 // v11 (30 Oct 2026): + journal — /api/journal (range index), /api/journal/:key
 //   (page get/put, optimistic rev), /api/journal/:key/ink/:page (handwriting),
@@ -27,6 +31,8 @@ const AREA_NAMES = ["Church", "Blibli", "Fitness", "Family", "Personal"];
 const PRIORITY_NAMES = ["P1 - Critical", "P2 - High", "P3 - Medium", "P4 - Low"];
 const STATUS_NAMES = ["To do", "Done", "Canceled"];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SPACE_NAMES = ["work", "ministry", "study"];
+const PROJECT_STATUS = ["Active", "Paused", "Done"];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function validationError(field, message) {
@@ -57,6 +63,9 @@ function validateInput(input, { partial }) {
   }
   if (input.status !== undefined && !STATUS_NAMES.includes(input.status)) {
     throw validationError("status", "status must be one of: " + STATUS_NAMES.join(", "));
+  }
+  if (input.projectId !== undefined && input.projectId !== null && input.projectId !== "" && !UUID_RE.test(input.projectId)) {
+    throw validationError("projectId", "projectId must be a project uuid, or null to clear");
   }
 }
 
@@ -89,6 +98,7 @@ function simplify(r) {
     label,
     notes: r.notes || "",
     completedAt: r.completed_at || null,
+    projectId: r.project_id || null,
   };
 }
 
@@ -118,10 +128,10 @@ async function createTask(env, input) {
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
   await env.DB.prepare(
-    `INSERT INTO tasks (id, title, status, priority, due, area, notes, source, created_at, updated_at)
-     VALUES (?1, ?2, 'To do', ?3, ?4, ?5, ?6, 'Manual', ?7, ?7)`
+    `INSERT INTO tasks (id, title, status, priority, due, area, notes, source, project_id, created_at, updated_at)
+     VALUES (?1, ?2, 'To do', ?3, ?4, ?5, ?6, 'Manual', ?7, ?8, ?8)`
   ).bind(id, input.title, input.priority || "P3 - Medium", input.due || null,
-         input.area || null, input.notes || "", now).run();
+         input.area || null, input.notes || "", input.projectId || null, now).run();
   return simplify(await getTask(env, id));
 }
 
@@ -137,6 +147,7 @@ async function updateTask(env, id, input) {
   if (input.due !== undefined) set("due", input.due || null);
   if (input.priority) set("priority", input.priority);
   if (input.area !== undefined) set("area", input.area || null);
+  if (input.projectId !== undefined) set("project_id", input.projectId || null);
   set("updated_at", new Date().toISOString());
   vals.push(id);
   const res = await env.DB.prepare(`UPDATE tasks SET ${sets.join(", ")} WHERE id = ?${vals.length}`)
@@ -239,20 +250,117 @@ async function upsertForSync(env, id, t) {
   const now = new Date().toISOString();
   const created = typeof t.created_at === "string" && t.created_at ? t.created_at : now;
   const updated = typeof t.updated_at === "string" && t.updated_at ? t.updated_at : now;
+  // v12: project_id rides along. A caller that predates v12 (no key at all)
+  // leaves the stored link alone instead of wiping it.
+  const hasProject = Object.prototype.hasOwnProperty.call(t, "project_id");
+  const projectId = typeof t.project_id === "string" && UUID_RE.test(t.project_id) ? t.project_id : null;
   await env.DB.prepare(
-    `INSERT INTO tasks (id, title, status, priority, due, area, labels, notes, completed_at, source, recurrence, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+    `INSERT INTO tasks (id, title, status, priority, due, area, labels, notes, completed_at, source, recurrence, created_at, updated_at, project_id)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
      ON CONFLICT(id) DO UPDATE SET title = excluded.title, status = excluded.status, priority = excluded.priority,
        due = excluded.due, area = excluded.area, labels = excluded.labels, notes = excluded.notes,
        completed_at = excluded.completed_at, source = excluded.source, recurrence = excluded.recurrence,
-       updated_at = excluded.updated_at`
+       updated_at = excluded.updated_at` + (hasProject ? `, project_id = excluded.project_id` : ``)
   ).bind(id, title, status, priority, due, area, labels, typeof t.notes === "string" ? t.notes : "",
     done, typeof t.source === "string" ? t.source.slice(0, 60) : null,
-    typeof t.recurrence === "string" ? t.recurrence : null, created, updated).run();
+    typeof t.recurrence === "string" ? t.recurrence : null, created, updated, projectId).run();
   return getTask(env, id);
 }
 async function deleteForSync(env, id) {
   const res = await env.DB.prepare(`DELETE FROM tasks WHERE id = ?1`).bind(id).run();
+  return res.meta.changes;
+}
+
+// ── Projects (v12, 3 Nov 2026) ─────────────────────────────────────────────
+// The Obsidian project notes (type: project) are the source of truth; this
+// table is the phone's copy, kept in step by notch-tasks-sync. The phone may
+// edit next step / dates / status / description and link tasks; the Mac sync
+// carries those edits back by updated_at (last write wins).
+function simplifyProject(r) {
+  return {
+    id: r.id, title: r.title, space: r.space || null, status: r.status || "Active",
+    description: r.description || "", next: r.next || "", nextDue: r.next_due || null,
+    due: r.due || null, updatedAt: r.updated_at,
+  };
+}
+function cleanProject(input, { partial }) {
+  if (!input || typeof input !== "object") throw validationError("body", "request body must be a JSON object");
+  const out = {};
+  if (!partial || input.title !== undefined) {
+    const title = typeof input.title === "string" ? input.title.trim() : "";
+    if (!title || title.length > 200) throw validationError("title", "title must be a non-empty string of 200 characters or fewer");
+    out.title = title;
+  }
+  if (input.space !== undefined) {
+    if (input.space !== null && !SPACE_NAMES.includes(input.space)) throw validationError("space", "space must be one of: " + SPACE_NAMES.join(", "));
+    out.space = input.space;
+  }
+  if (input.status !== undefined) {
+    if (!PROJECT_STATUS.includes(input.status)) throw validationError("status", "status must be one of: " + PROJECT_STATUS.join(", "));
+    out.status = input.status;
+  }
+  for (const [k, max] of [["description", 4000], ["next", 300]]) {
+    if (input[k] !== undefined) {
+      if (input[k] !== null && typeof input[k] !== "string") throw validationError(k, k + " must be a string");
+      out[k] = (input[k] || "").slice(0, max);
+    }
+  }
+  for (const [k, col] of [["nextDue", "next_due"], ["due", "due"]]) {
+    if (input[k] !== undefined) {
+      if (input[k] !== null && input[k] !== "" && !DATE_RE.test(input[k])) throw validationError(k, k + " must be YYYY-MM-DD, or null to clear");
+      out[col] = input[k] || null;
+    }
+  }
+  return out;
+}
+async function listProjects(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT p.*, (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.status = 'To do') AS open_count
+     FROM projects p WHERE p.status != 'Done' ORDER BY p.next_due IS NULL, p.next_due, p.title`
+  ).all();
+  return results.map((r) => ({ ...simplifyProject(r), openCount: r.open_count || 0 }));
+}
+async function getProject(env, id) {
+  return env.DB.prepare(`SELECT * FROM projects WHERE id = ?1`).bind(id).first();
+}
+async function createProject(env, input) {
+  const v = cleanProject(input, { partial: false });
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO projects (id, title, space, status, description, next, next_due, due, updated_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`
+  ).bind(id, v.title, v.space || null, v.status || "Active", v.description || "", v.next || "",
+    v.next_due || null, v.due || null, now).run();
+  return simplifyProject(await getProject(env, id));
+}
+async function updateProject(env, id, input) {
+  const v = cleanProject(input, { partial: true });
+  const sets = [], vals = [];
+  for (const [col, val] of Object.entries(v)) { vals.push(val); sets.push(`${col} = ?${vals.length}`); }
+  vals.push(new Date().toISOString()); sets.push(`updated_at = ?${vals.length}`);
+  vals.push(id);
+  const res = await env.DB.prepare(`UPDATE projects SET ${sets.join(", ")} WHERE id = ?${vals.length}`).bind(...vals).run();
+  if (!res.meta.changes) return null;
+  return simplifyProject(await getProject(env, id));
+}
+// Mac mirror: full rows, the caller's updated_at kept.
+async function upsertProjectForSync(env, id, p) {
+  const v = cleanProject(p, { partial: false });
+  const updated = typeof p.updated_at === "string" && p.updated_at ? p.updated_at : new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO projects (id, title, space, status, description, next, next_due, due, updated_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+     ON CONFLICT(id) DO UPDATE SET title = excluded.title, space = excluded.space, status = excluded.status,
+       description = excluded.description, next = excluded.next, next_due = excluded.next_due,
+       due = excluded.due, updated_at = excluded.updated_at`
+  ).bind(id, v.title, v.space || null, v.status || "Active", v.description || "", v.next || "",
+    v.next_due || null, v.due || null, updated).run();
+  return getProject(env, id);
+}
+async function deleteProjectForSync(env, id) {
+  await env.DB.prepare(`UPDATE tasks SET project_id = NULL WHERE project_id = ?1`).bind(id).run();
+  const res = await env.DB.prepare(`DELETE FROM projects WHERE id = ?1`).bind(id).run();
   return res.meta.changes;
 }
 
@@ -833,6 +941,37 @@ export async function handle(request, env) {
       catch (e) { if (e.isValidation) return json({ error: e.message, field: e.field }, 400, env); throw e; }
       await replaceEvents(env, input.from, input.to, events);
       return json({ ok: true, stored: events.length }, 200, env);
+    }
+    // ── v12 projects ──
+    if (parts[0] === "api" && parts[1] === "projects" && !parts[2] && request.method === "GET") {
+      return json({ projects: await listProjects(env) }, 200, env);
+    }
+    if (parts[0] === "api" && parts[1] === "projects" && !parts[2] && request.method === "POST") {
+      const input = await readJson(request);
+      if (input === undefined) return json({ error: "body must be valid JSON", field: "body" }, 400, env);
+      try { return json(await createProject(env, input), 201, env); }
+      catch (e) { if (e.isValidation) return json({ error: e.message, field: e.field }, 400, env); throw e; }
+    }
+    if (parts[0] === "api" && parts[1] === "projects" && parts[2] && !parts[3] && request.method === "PATCH") {
+      if (!UUID_RE.test(parts[2])) return json({ error: "project id must be a UUID", field: "id" }, 400, env);
+      const input = await readJson(request);
+      if (input === undefined) return json({ error: "body must be valid JSON", field: "body" }, 400, env);
+      try {
+        const p = await updateProject(env, parts[2], input);
+        return p ? json(p, 200, env) : json({ error: "not found" }, 404, env);
+      } catch (e) { if (e.isValidation) return json({ error: e.message, field: e.field }, 400, env); throw e; }
+    }
+    if (parts[0] === "api" && parts[1] === "sync" && parts[2] === "projects" && !parts[3] && request.method === "GET") {
+      const { results } = await env.DB.prepare(`SELECT * FROM projects ORDER BY title`).all();
+      return json({ projects: results }, 200, env);
+    }
+    if (parts[0] === "api" && parts[1] === "sync" && parts[2] === "projects" && parts[3] && (request.method === "PUT" || request.method === "DELETE")) {
+      if (!UUID_RE.test(parts[3])) return json({ error: "project id must be a UUID", field: "id" }, 400, env);
+      if (request.method === "DELETE") return json({ ok: true, deleted: await deleteProjectForSync(env, parts[3]) }, 200, env);
+      const input = await readJson(request);
+      if (input === undefined) return json({ error: "body must be valid JSON", field: "body" }, 400, env);
+      try { return json(await upsertProjectForSync(env, parts[3], input), 200, env); }
+      catch (e) { if (e.isValidation) return json({ error: e.message, field: e.field }, 400, env); throw e; }
     }
     if (parts[0] === "api" && parts[1] === "sync" && parts[2] === "tasks" && !parts[3] && request.method === "GET") {
       return json({ tasks: await listAllForSync(env) }, 200, env);
