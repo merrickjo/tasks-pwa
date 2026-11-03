@@ -13,6 +13,13 @@ from launchd every 5 minutes and reconciles both sides:
   * note deleted in the vault  -> deleted from D1 (unless D1 changed since,
                                   in which case the note is recreated)
 
+Project links (v12, 3 Nov 2026): a task's `project_id` (the uuid of an
+Obsidian project note, see notch_projects_sync.py) rides along with every
+push and pull. It merges on its own, three ways against the last synced
+value, so editing a task's title on the phone never undoes a project link
+made in Homebase (or the other way round). The readable `project: [[Name]]`
+link in the note is kept in step with the id.
+
 State (last-synced hash per task) lives in ~/Library/Application Support/Notch.
 Usage: notch_tasks_sync.py [--dry-run] [--vault PATH]
 """
@@ -312,11 +319,64 @@ def note_to_row(tid, rec, updated_at, prev_status=None):
             "due": f["due"], "area": f["area"], "labels": f["labels"], "notes": f["notes"],
             "completed_at": f["completed_at"] or (jakarta_today() if f["status"] == "Done" and prev_status != "Done" else None),
             "source": f["source"], "recurrence": f["recurrence"],
-            "created_at": str(created), "updated_at": updated_at}
+            "created_at": str(created), "updated_at": updated_at,
+            "project_id": valid_pid(fm.get("project_id"))}
 
 
 def mtime_iso(ts):
     return dt.datetime.fromtimestamp(ts, dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
+# ── project links (v12) ──
+# project_id is NOT part of fhash(): it merges on its own (merge_pid), so the
+# hashes saved before v12 stay valid and nothing looks "changed" on upgrade.
+
+def valid_pid(v):
+    v = str(v or "").strip()
+    return v if UUID_RE.match(v) else None
+
+
+def project_names(vault):
+    """id -> note name, for every vault note with `type: project`."""
+    out = {}
+    for root, dirs, files in os.walk(vault):
+        dirs[:] = [d for d in dirs if not d.startswith((".", "_")) and d != "Archive"]
+        for name in files:
+            if not name.endswith(".md"):
+                continue
+            try:
+                with open(os.path.join(root, name), encoding="utf-8") as f:
+                    head = f.read(6000)
+            except (OSError, UnicodeDecodeError):
+                continue
+            if not head.startswith("---") or not re.search(r'^type:\s*["\']?project["\']?\s*$', head, re.M):
+                continue
+            m = re.search(r'^id:\s*["\']?([0-9a-fA-F-]{36})["\']?\s*$', head, re.M)
+            if m:
+                out[m.group(1).lower()] = name[:-3]
+    return out
+
+
+def set_pid(fm, pid, names):
+    """Write project_id and the readable link into a note's frontmatter."""
+    if pid:
+        fm["project_id"] = pid
+        if pid in names:
+            fm["project"] = f"[[{names[pid]}]]"
+    else:
+        fm.pop("project_id", None)
+        fm.pop("project", None)
+
+
+def merge_pid(vp, rp, bp, v_ts, r_ts):
+    """Three-way merge of one task's project link (vault, D1, last synced)."""
+    if vp == rp:
+        return vp
+    if rp == bp:
+        return vp          # only the vault changed it
+    if vp == bp:
+        return rp          # only the phone changed it
+    return vp if v_ts >= r_ts else rp
 
 
 # ── the reconcile ──
@@ -330,6 +390,8 @@ def run(vault, dry):
         with open(STATE_FILE, encoding="utf-8") as f:
             state = json.load(f)
     base = state.setdefault("tasks", {})
+    pbase = state.setdefault("project_ids", {})   # v12: last synced project_id per task
+    names = project_names(vault)
 
     rows = {r["id"]: r for r in api.call("GET", "/api/sync/tasks").get("tasks", [])}
     notes, no_id, dupes = scan_vault(folder)
@@ -337,7 +399,7 @@ def run(vault, dry):
         log(f"warn: duplicate id, ignored: {os.path.basename(p)}")
 
     stats = dict(pushed=0, pulled=0, created_note=0, created_row=0, deleted_row=0,
-                 recreated=0, conflicts=0, renamed=0)
+                 recreated=0, conflicts=0, renamed=0, linked=0)
     taken = {r["path"] for r in notes.values()} | {r["path"] for r in no_id}
 
     # 1) brand-new notes without an id
@@ -354,6 +416,7 @@ def run(vault, dry):
         if not dry:
             atomic_write(rec["path"], render_note(rec["fm"], rec["body"]))
         base[tid] = fhash(note_fields(rec["fm"], rec["body"]))
+        pbase[tid] = row["project_id"]
         stats["created_row"] += 1
         log(f"new  -> D1  {rec['fields']['title'][:70]}")
 
@@ -364,8 +427,27 @@ def run(vault, dry):
         rh = fhash(norm_fields(row)) if row else None
 
         if rec and row:
+            vp, rp, bp = valid_pid(rec["fm"].get("project_id")), valid_pid(row.get("project_id")), pbase.get(tid)
+            v_ts = max(str(rec["fm"].get("updated_at") or ""), mtime_iso(rec["mtime"]))
+            mp = merge_pid(vp, rp, bp, v_ts, str(row.get("updated_at") or ""))
             if vh == rh:
                 base[tid] = vh
+                if mp != vp:     # phone linked/unlinked the task: write the note
+                    set_pid(rec["fm"], mp, names)
+                    if not dry:
+                        atomic_write(rec["path"], render_note(rec["fm"], rec["body"]))
+                    stats["linked"] += 1
+                    log(f"link D1 -> vault {rec['fields']['title'][:60]}")
+                if mp != rp:     # vault linked/unlinked it: push the row
+                    ts = now_iso()
+                    set_pid(rec["fm"], mp, names)
+                    rec["fm"]["updated_at"] = ts
+                    api.call("PUT", f"/api/sync/tasks/{tid}", note_to_row(tid, rec, ts, prev_status=norm_fields(row)["status"]))
+                    if not dry:
+                        atomic_write(rec["path"], render_note(rec["fm"], rec["body"]))
+                    stats["linked"] += 1
+                    log(f"link vault -> D1 {rec['fields']['title'][:60]}")
+                pbase[tid] = mp
                 continue
             v_changed, r_changed = vh != b, rh != b
             if v_changed and r_changed and b is not None:
@@ -379,6 +461,7 @@ def run(vault, dry):
                 winner = "vault" if v_changed else "d1"
             if winner == "vault":
                 ts = now_iso()
+                set_pid(rec["fm"], mp, names)
                 out = note_to_row(tid, rec, ts, prev_status=norm_fields(row)["status"])
                 api.call("PUT", f"/api/sync/tasks/{tid}", out)
                 rec["fm"]["updated_at"] = ts
@@ -387,9 +470,11 @@ def run(vault, dry):
                     atomic_write(rec["path"], render_note(rec["fm"], rec["body"]))
                 stats["pushed"] += 1
                 base[tid] = fhash(note_fields(rec["fm"], rec["body"]))
+                pbase[tid] = mp
                 log(f"vault-> D1  {rec['fields']['title'][:70]}")
             else:
                 fm, body = row_to_note(row, rec["fm"], rec["body"])
+                set_pid(fm, mp, names)
                 path = rec["path"]
                 want = os.path.join(folder, safe_filename(fm["title"]) + ".md")
                 if want != path and not os.path.exists(want):
@@ -401,16 +486,24 @@ def run(vault, dry):
                     atomic_write(path, render_note(fm, body))
                 stats["pulled"] += 1
                 base[tid] = rh
+                if mp != rp:   # the vault's link survives a phone edit of other fields
+                    pushed = dict(row, project_id=mp, labels=norm_fields(row)["labels"])
+                    api.call("PUT", f"/api/sync/tasks/{tid}", pushed)
+                    stats["linked"] += 1
+                pbase[tid] = mp
                 log(f"D1 -> vault {fm['title'][:70]}")
         elif row and not rec:
             if b is not None and rh == b:
                 # note was deleted in the vault and D1 hasn't changed since
                 api.call("DELETE", f"/api/sync/tasks/{tid}")
                 base.pop(tid, None)
+                pbase.pop(tid, None)
                 stats["deleted_row"] += 1
                 log(f"deleted in vault -> removed from D1: {row['title'][:70]}")
                 continue
             fm, body = row_to_note(row)
+            set_pid(fm, valid_pid(row.get("project_id")), names)
+            pbase[tid] = valid_pid(row.get("project_id"))
             path = os.path.join(folder, safe_filename(fm["title"]) + ".md")
             if path in taken or os.path.exists(path):
                 path = os.path.join(folder, f"{safe_filename(fm['title'])} ({tid[:8]}).md")
@@ -426,12 +519,14 @@ def run(vault, dry):
             ts = rec["fm"].get("updated_at") or mtime_iso(rec["mtime"])
             api.call("PUT", f"/api/sync/tasks/{tid}", note_to_row(tid, rec, str(ts)))
             base[tid] = vh
+            pbase[tid] = valid_pid(rec["fm"].get("project_id"))
             stats["created_row"] += 1
             log(f"vault-only -> D1  {rec['fields']['title'][:70]}")
 
     for tid in list(base):
         if tid not in notes and tid not in rows:
             base.pop(tid)
+            pbase.pop(tid, None)
 
     state["last_run"] = now_iso()
     if not dry:
@@ -458,6 +553,19 @@ def main():
         os.remove(lock)
         fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     try:
+        # v12 — projects first, so a project made on the phone has its note
+        # (and its name for task links) before tasks reconcile. Isolated.
+        try:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "notch_projects_sync", os.path.join(APP_DIR, "notch_projects_sync.py"))
+            ps = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(ps)
+            ps.sync(a.vault, ps.load_config(os.path.join(APP_DIR, "config")), a.dry_run)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            log(f"projects sync error: {e}")
         run(a.vault, a.dry_run)
         # 4.6 — journal mirror (Notch/Journal). Isolated: a failure is
         # logged by the mirror itself and never fails task sync.

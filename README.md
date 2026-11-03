@@ -8,6 +8,7 @@ Android APK (android/) ─┼─→ Cloudflare Worker (worker/) ─→ D1: tasks
                         │                                    ↑
 Obsidian vault  ←── Mac sync (every 5 min, mac/) ─────────────┘
   Notch/Tasks    two-way, the vault is the source of truth for tasks
+  Projects       two-way, notes with `type: project` (v12)
   Notch/Journal  one-way mirror of the journal (Markdown + SVG handwriting)
 ```
 
@@ -15,9 +16,17 @@ Obsidian vault  ←── Mac sync (every 5 min, mac/) ────────�
   `concursus.js`. Live at `https://merrickjo.github.io/tasks-pwa/`.
 - **Worker** — `worker/worker.js`, the only thing holding credentials (app
   key, Google OAuth). Schema in `worker/schema.sql`.
-- **Mac** — `notch-tasks-sync.py` (launchd, every 5 min) reconciles
-  `Notch/Tasks` with D1, then runs `mac/notch_journal_mirror.py`.
-  Both live in `~/Library/Application Support/Notch/`.
+- **Mac** — `mac/notch-tasks-sync.py` (launchd, every 5 min) runs
+  `mac/notch_projects_sync.py`, reconciles `Notch/Tasks` with D1, then runs
+  `mac/notch_journal_mirror.py`. The installed copies live in
+  `~/Library/Application Support/Notch/` (copy them there after a change).
+- **Projects (v12)** — a project is an Obsidian note with `type: project`
+  and a uuid `id` (Homebase creates and edits them). Tasks point at it with
+  `project_id`, plus a readable `project: [[Name]]` link. The task sync
+  merges `project_id` on its own (three-way against the last synced value),
+  so a phone edit to a task never undoes a link made in Homebase, or the
+  reverse. In the app: Projects view, project tag on rows, Project picker
+  in the edit sheet.
 - **APK** — `android/`, a native WebView shell around the live web app.
   Web deploys reach it on next launch; rebuild only when the shell changes.
 
