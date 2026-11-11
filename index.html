@@ -49,7 +49,10 @@
            flex sibling centered against the date+title block instead of
            absolutely positioned off the date line, so the icon aligns
            with the view title, not just the small date row above it. -->
-      <button type="button" class="mode-toggle" id="mode-toggle" aria-label="Switch background mode"></button>
+      <div class="topbar-actions">
+        <button type="button" class="tasks-refresh" id="tasks-refresh" aria-label="Refresh tasks">Refresh</button>
+        <button type="button" class="mode-toggle" id="mode-toggle" aria-label="Switch background mode"></button>
+      </div>
     </div>
     <div class="chips" id="view-chips"></div>
   </div>

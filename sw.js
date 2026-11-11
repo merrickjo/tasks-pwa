@@ -236,7 +236,8 @@
 // v57 -> v58: Google Calendar event editing and calendar views (4.9.2).
 // v58 -> v59: 7-day and 3-day calendar time grids (4.9.3).
 // v59 -> v60: refresh tasks in open and resumed app windows (4.9.4).
-const CACHE_NAME = "tasks-shell-v60";
+// v60 -> v61: manual task refresh (4.9.5).
+const CACHE_NAME = "tasks-shell-v61";
 const SHELL = [
   "./",
   "./index.html",

@@ -324,6 +324,24 @@ body {
   gap: var(--s-3);
 }
 
+.topbar-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--s-2);
+}
+.tasks-refresh {
+  min-height: 40px;
+  padding: 0 8px;
+  border: 1px solid var(--ink);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink);
+  font: 12px var(--font-mono);
+  cursor: pointer;
+}
+.tasks-refresh:disabled { opacity: 0.5; cursor: wait; }
+
 /* --- area filter chips --- */
 .chips {
   display: flex;

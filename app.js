@@ -9,7 +9,7 @@
 // return [] for both, which rendered a connection error over a real "No
 // open tasks" state. One-time fallback reads the old bare-array key.
 // 4.3.3 — shown on the date line so "which version am I on?" is answerable at a glance.
-const APP_BUILD = "v4.9.4";
+const APP_BUILD = "v4.9.5";
 const CACHE_KEY = "tasks-cache-v2";
 const LEGACY_CACHE_KEY = "tasks-cache-v1";
 const CFG_KEY = "tasks-cfg-v1";
@@ -1633,11 +1633,15 @@ async function boot() {
 // Installed windows can stay open across edits made in another browser.
 // Fetch on return and while visible, without replacing the user's view.
 const TASKS_REFRESH_MS = 60 * 1000;
-let tasksRefreshing = false;
+let tasksRefresh = null;
 
-async function refreshTasks() {
-  if (tasksRefreshing || !getConfig()) return;
-  tasksRefreshing = true;
+function refreshTasks() {
+  if (!getConfig()) return Promise.resolve(false);
+  tasksRefresh ??= fetchTasks().finally(() => { tasksRefresh = null; });
+  return tasksRefresh;
+}
+
+async function fetchTasks() {
   const cached = getCacheEntry();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);
@@ -1647,10 +1651,9 @@ async function refreshTasks() {
     document.getElementById("offline-banner").classList.remove("show");
     if (getCacheEntry()?.syncedAt !== cached?.syncedAt) {
       // A confirmed local edit landed while the read was in flight.
-      setTimeout(refreshTasks, 0);
-      return;
+      return fetchTasks();
     }
-    if (cached && JSON.stringify(tasks) === JSON.stringify(cached.tasks)) return;
+    if (cached && JSON.stringify(tasks) === JSON.stringify(cached.tasks)) return true;
     setCache(tasks);
     const all = sortTasks(tasks);
     const previousView = activeView;
@@ -1664,6 +1667,7 @@ async function refreshTasks() {
     if (activeTab === "calendar" && typeof NOTCH_CAL !== "undefined") {
       NOTCH_CAL.init(document.getElementById("calendar-view"));
     }
+    return true;
   } catch (e) {
     if (hasCacheMetadata()) {
       document.getElementById("offline-banner").classList.add("show");
@@ -1682,11 +1686,24 @@ async function refreshTasks() {
       err.textContent = "Can't reach the server. Check your connection or Worker URL.";
       list.appendChild(err);
     }
+    return false;
   } finally {
     clearTimeout(timeout);
-    tasksRefreshing = false;
   }
 }
+
+document.getElementById("tasks-refresh")?.addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  try {
+    const synced = await refreshTasks();
+    showToast(synced ? "Tasks up to date" : "Couldn't refresh tasks · try again");
+  } finally {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+  }
+});
 
 function refreshVisibleTasks() {
   if (document.visibilityState === "visible") refreshTasks();
