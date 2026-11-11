@@ -106,7 +106,10 @@ and asks for the Worker URL + app key once, like any new browser.
 ## Google Calendar (4.4 · Worker v10)
 
 The CALENDAR tab shows Outlook (the Mac mirror, next 7 days) plus your own
-Google calendar (primary), and adds events to Google. Tap a one-off event you
+Google calendar (primary), and adds events to Google. Switch between the
+month grid and 7-day, 3-day, or single-day agendas. The shorter views start
+on the selected date and give each day its own add-event button.
+Tap a one-off event you
 organize to edit its title, date, or time. Events with guests, recurring,
 multi-day and overnight events open in Google Calendar. The Worker holds the
 Google refresh token in D1 `meta`; the PWA never sees a Google credential.

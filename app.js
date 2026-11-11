@@ -9,7 +9,7 @@
 // return [] for both, which rendered a connection error over a real "No
 // open tasks" state. One-time fallback reads the old bare-array key.
 // 4.3.3 — shown on the date line so "which version am I on?" is answerable at a glance.
-const APP_BUILD = "v4.9.1";
+const APP_BUILD = "v4.9.2";
 const CACHE_KEY = "tasks-cache-v2";
 const LEGACY_CACHE_KEY = "tasks-cache-v1";
 const CFG_KEY = "tasks-cfg-v1";
@@ -1835,7 +1835,7 @@ function initTabRouter() {
 //   Journal:      [ ]  previous / next spread · t  today · m w d  month/week/day
 //   n             new task (Tasks capture bar)
 //   l             today's rapid log (4.8 desktop Today pane, ≥1280px)
-//   Calendar:     ← →  day · ↑ ↓  week · [ ]  month · t  today · e  add event
+//   Calendar:     ← →  day · ↑ ↓  week · [ ]  page current view · t today · e add event
 //   Esc           closes the calendar's add-event sheet (the task sheet
 //                 already handles its own Esc)
 document.addEventListener("keydown", (e) => {
@@ -1873,8 +1873,8 @@ document.addEventListener("keydown", (e) => {
     ArrowRight: () => NOTCH_CAL.moveDay(1),
     ArrowUp: () => NOTCH_CAL.moveDay(-7),
     ArrowDown: () => NOTCH_CAL.moveDay(7),
-    "[": () => NOTCH_CAL.prevMonth(),
-    "]": () => NOTCH_CAL.nextMonth(),
+    "[": () => NOTCH_CAL.prev(),
+    "]": () => NOTCH_CAL.next(),
     t: () => NOTCH_CAL.goToday(),
     e: () => NOTCH_CAL.addEvent(),
   };

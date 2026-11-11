@@ -2147,6 +2147,30 @@ body.calendar-active .bottom-scrim {
 }
 .cal-today-btn:disabled { opacity: 0.35; cursor: default; }
 
+.cal-view-picker {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: var(--s-2);
+  border: 1px solid var(--ink);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.cal-view-option {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 0;
+  border-inline-end: 1px solid var(--ink);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.cal-view-option:last-child { border-inline-end: 0; }
+.cal-view-option[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.cal-view-option:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; }
+
 .cal-body {
   padding: 0 0 calc(var(--nk-tabbar-inset) + var(--nk-tabbar-h) + var(--nk-tabbar-inset) + env(safe-area-inset-bottom) + 16px);
 }
@@ -2211,6 +2235,9 @@ body.calendar-active .bottom-scrim {
 .cal-cell.overdue .cal-marks { color: var(--overdue); font-weight: 700; }
 
 /* --- day log --- */
+.cal-agenda-days { touch-action: pan-y; }
+.cal-agenda-days .cal-day + .cal-day { border-top: 1px solid var(--border); }
+.cal-day-heading { margin: 0; font: inherit; }
 .cal-day-label {
   display: flex;
   align-items: center;

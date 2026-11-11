@@ -1,7 +1,7 @@
 // CALENDAR tab — 4.4 (21 Oct 2026)
 //
-// The bullet-journal MONTHLY LOG: a month grid on top, the selected day's
-// log underneath. Two signifiers, straight from the paper method:
+// Month grid with the selected day's log, plus 7-day, 3-day and day agendas.
+// Two signifiers, straight from the paper method:
 //   ○  an event   (Outlook work meetings via the Mac mirror + Google, live)
 //   •  a task     (open Notch tasks due that day, from the Tasks cache)
 // Cells carry counts ("○3 •2"), never colour, so the grid reads the same on
@@ -18,6 +18,9 @@
 
 const NOTCH_CAL = (function () {
   const CACHE_KEY = "calendar-cache-v1";  // { "<from>|<to>": { fetchedAt, data } }
+  const VIEW_KEY = "calendar-view-v1";
+  const VIEWS = { month: "Month", week: "7 days", three: "3 days", day: "Day" };
+  const VIEW_DAYS = { week: 7, three: 3, day: 1 };
   const CACHE_MAX = 4;                    // months kept for offline launches
   const REFETCH_MS = 5 * 60 * 1000;
   const MONTHS = ["January", "February", "March", "April", "May", "June",
@@ -27,6 +30,7 @@ const NOTCH_CAL = (function () {
 
   let root = null;
   let viewYear, viewMonth;       // month on screen (month is 0-based)
+  let view = "month";
   let selected = null;           // ISO date of the day log
   let loading = false;
   let loadError = null;
@@ -53,13 +57,27 @@ const NOTCH_CAL = (function () {
     return { from: localISO(start), to: localISO(end), cells };
   }
 
+  function visibleEnd() {
+    return addDays(selected, VIEW_DAYS[view] - 1);
+  }
+
+  function dataRange() {
+    const month = gridRange(viewYear, viewMonth);
+    if (view === "month" || !selected) return month;
+    const end = visibleEnd();
+    return end > month.to ? { from: month.from, to: end } : month;
+  }
+
   // ---------- cache ----------
   function readCache() {
     try { return JSON.parse(localStorage.getItem(CACHE_KEY)) || {}; } catch { return {}; }
   }
   function cached(range) {
-    const c = readCache()[`${range.from}|${range.to}`];
-    return c && c.data ? c : null;
+    return Object.entries(readCache()).reduce((newest, [key, entry]) => {
+      const [from, to] = key.split("|");
+      if (!entry.data || from > range.from || to < range.to) return newest;
+      return !newest || newest.fetchedAt < entry.fetchedAt ? entry : newest;
+    }, null);
   }
   function writeCache(range, data) {
     const all = readCache();
@@ -101,7 +119,7 @@ const NOTCH_CAL = (function () {
   }
 
   async function load(force) {
-    const range = gridRange(viewYear, viewMonth);
+    const range = dataRange();
     const c = cached(range);
     if (!force && c && Date.now() - c.fetchedAt < REFETCH_MS &&
         c.data.google?.events.every((e) => typeof e.editable === "boolean")) return;
@@ -126,8 +144,8 @@ const NOTCH_CAL = (function () {
       loading = false;
       if (loadError !== prevError) changed = true;
       // only repaint if the user is still looking at this month
-      const now = gridRange(viewYear, viewMonth);
-      if (now.from === range.from) { if (changed) render(); else setKicker(); }
+      const now = dataRange();
+      if (now.from === range.from && now.to === range.to) { if (changed) render(); else setKicker(); }
     }
   }
 
@@ -149,19 +167,30 @@ const NOTCH_CAL = (function () {
   // ---------- render ----------
   function render() {
     if (!root) return;
-    const range = gridRange(viewYear, viewMonth);
+    const today = todayISO();
+    if (!selected) selected = today;
+    const range = dataRange();
     const entry = cached(range);
     const data = entry ? entry.data : null;
     const tmap = tasksByDate();
-    const today = todayISO();
-    if (!selected) selected = today;
 
     root.innerHTML = "";
     root.appendChild(buildHeader(today));
 
     const body = el("div", "cal-body");
-    body.appendChild(buildGrid(range, data, tmap, today));
-    body.appendChild(buildDayLog(data, tmap, today));
+    if (view === "month") {
+      body.appendChild(buildGrid(range, data, tmap, today));
+      body.appendChild(buildDayLog(selected, data, tmap, today));
+    } else {
+      const days = el("div", "cal-agenda-days");
+      for (let i = 0; i < VIEW_DAYS[view]; i++) {
+        const date = addDays(selected, i);
+        const dayData = data || cached({ from: date, to: date })?.data;
+        days.appendChild(buildDayLog(date, dayData, tmap, today));
+      }
+      bindSwipe(days);
+      body.appendChild(days);
+    }
     body.appendChild(buildSources(entry));
     root.appendChild(body);
   }
@@ -174,31 +203,66 @@ const NOTCH_CAL = (function () {
     if (k) k.textContent = kickerText();
   }
 
+  function viewTitle() {
+    if (view === "month") return `${MONTHS[viewMonth]} ${viewYear}`;
+    const fmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+    const start = parseISO(selected);
+    if (view === "day") return fmt.format(start);
+    const end = parseISO(visibleEnd());
+    return fmt.formatRange ? fmt.formatRange(start, end) : fmt.format(start) + " – " + fmt.format(end);
+  }
+
   function buildHeader(today) {
     const bar = el("div", "cal-headbar");
     const row = el("div", "cal-headbar-row");
     const heading = el("div", "cal-heading");
     heading.appendChild(el("div", "cal-kicker", kickerText()));
-    heading.appendChild(el("h1", "cal-title", `${MONTHS[viewMonth]} ${viewYear}`));
+    heading.appendChild(el("h1", "cal-title", viewTitle()));
     row.appendChild(heading);
 
     const nav = el("div", "cal-nav");
-    nav.appendChild(button("cal-nav-btn", "‹", "Previous month", () => shiftMonth(-1)));
-    const t = new Date();
-    const onToday = viewYear === t.getFullYear() && viewMonth === t.getMonth() && selected === today;
-    const todayBtn = button("cal-today-btn", "Today", "Go to today", () => {
-      viewYear = t.getFullYear(); viewMonth = t.getMonth(); selected = today;
-      render(); load();
-    });
-    if (onToday) todayBtn.disabled = true;
+    const span = VIEWS[view].toLowerCase();
+    nav.appendChild(button("cal-nav-btn", "‹", `Previous ${span}`, () => shiftView(-1)));
+    const todayBtn = button("cal-today-btn", "Today", "Go to today", goToday);
+    if (selected === today) todayBtn.disabled = true;
     nav.appendChild(todayBtn);
-    nav.appendChild(button("cal-nav-btn", "›", "Next month", () => shiftMonth(1)));
+    nav.appendChild(button("cal-nav-btn", "›", `Next ${span}`, () => shiftView(1)));
     const mode = button("mode-toggle", "", "Switch background mode", () => toggleTheme());
     mode.innerHTML = modeIcon(effectiveTheme());
     nav.appendChild(mode);
     row.appendChild(nav);
     bar.appendChild(row);
+    const picker = el("div", "cal-view-picker");
+    picker.setAttribute("role", "group");
+    picker.setAttribute("aria-label", "Calendar view");
+    for (const [key, label] of Object.entries(VIEWS)) {
+      const option = button("cal-view-option", label, null, () => {
+        if (view === key) return;
+        view = key;
+        try { localStorage.setItem(VIEW_KEY, view); } catch {}
+        render();
+        root.querySelector(`[data-calendar-view="${view}"]`)?.focus({ preventScroll: true });
+        load();
+      });
+      option.dataset.calendarView = key;
+      option.setAttribute("aria-pressed", String(key === view));
+      picker.appendChild(option);
+    }
+    bar.appendChild(picker);
     return bar;
+  }
+
+  function selectDate(date) {
+    selected = date;
+    const d = parseISO(date);
+    viewYear = d.getFullYear(); viewMonth = d.getMonth();
+    render();
+    load();
+  }
+
+  function shiftView(n) {
+    if (view === "month") shiftMonth(n);
+    else moveDay(n * VIEW_DAYS[view]);
   }
 
   function shiftMonth(n) {
@@ -258,11 +322,7 @@ const NOTCH_CAL = (function () {
         if (lines.length > CELL_LINES) list.appendChild(el("span", "cal-line cal-line-more", `+${lines.length - CELL_LINES} more`));
         cell.appendChild(list);
       }
-      cell.addEventListener("click", () => {
-        if (!inMonth) { viewYear = d.getFullYear(); viewMonth = d.getMonth(); selected = date; render(); load(); return; }
-        selected = date;
-        render();
-      });
+      cell.addEventListener("click", () => selectDate(date));
       grid.appendChild(cell);
     }
     wrap.appendChild(grid);
@@ -270,7 +330,7 @@ const NOTCH_CAL = (function () {
     return wrap;
   }
 
-  // Horizontal swipe on the grid flips months; vertical motion stays a scroll.
+  // Horizontal swipe pages the active view; vertical motion stays a scroll.
   function bindSwipe(node) {
     let x0 = null, y0 = null;
     node.addEventListener("touchstart", (e) => { const t = e.touches[0]; x0 = t.clientX; y0 = t.clientY; }, { passive: true });
@@ -279,30 +339,34 @@ const NOTCH_CAL = (function () {
       const t = e.changedTouches[0];
       const dx = t.clientX - x0, dy = t.clientY - y0;
       x0 = null;
-      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) shiftMonth(dx < 0 ? 1 : -1);
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) shiftView(dx < 0 ? 1 : -1);
     }, { passive: true });
   }
 
-  function buildDayLog(data, tmap, today) {
+  function buildDayLog(date, data, tmap, today) {
     const box = el("section", "cal-day");
-    const d = parseISO(selected);
+    const d = parseISO(date);
     const label = el("div", "section-label cal-day-label");
-    const rel = selected === today ? "TODAY · " : selected === addDays(today, 1) ? "TOMORROW · " : "";
-    label.appendChild(el("span", null, rel + d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }).toUpperCase()));
+    const rel = date === today ? "TODAY · " : date === addDays(today, 1) ? "TOMORROW · " : "";
+    const dayLabel = d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+    const heading = el("h2", "cal-day-heading", rel + dayLabel.toUpperCase());
+    heading.id = "cal-day-" + date;
+    label.appendChild(heading);
+    box.setAttribute("aria-labelledby", heading.id);
     // 4.6 — the day's journal page is one tap away (the monthly log points
     // at the daily log, as on paper).
     const acts = el("span", "cal-day-acts");
-    acts.appendChild(button("cal-add-btn", "LOG ›", "Open this day's journal page", () => {
+    acts.appendChild(button("cal-add-btn", "LOG ›", `Open journal for ${dayLabel}`, () => {
       if (typeof NOTCH_JOURNAL === "undefined") return;
-      NOTCH_JOURNAL.openDay(selected);
+      NOTCH_JOURNAL.openDay(date);
       setActiveTab("journal");
     }));
-    acts.appendChild(button("cal-add-btn", "+ EVENT", "Add an event on this day", () => openSheet()));
+    acts.appendChild(button("cal-add-btn", "+ EVENT", `Add an event on ${dayLabel}`, () => openSheet(null, date)));
     label.appendChild(acts);
     box.appendChild(label);
 
-    const evs = eventsFor(data, selected);
-    const tasks = tmap[selected] || [];
+    const evs = eventsFor(data, date);
+    const tasks = tmap[date] || [];
     if (!evs.length && !tasks.length) {
       box.appendChild(el("div", "cal-empty", data ? "Nothing logged." : (loading ? "Loading…" : "No calendar data yet.")));
       return box;
@@ -394,7 +458,7 @@ const NOTCH_CAL = (function () {
     const synced = o && o.syncedAt ? ` · synced ${new Date(o.syncedAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })} ${hhmm(o.syncedAt)}` : "";
     box.appendChild(el("div", "cal-src-line", `WORK · Outlook, next 7 days only${synced}`));
     // desktop only (CSS): the keyboard map
-    box.appendChild(el("div", "cal-keys", "KEYS · ← → day · ↑ ↓ week · [ ] month · t today · e add event · 1 2 3 tabs · n new task"));
+    box.appendChild(el("div", "cal-keys", "KEYS · ← → day · ↑ ↓ week · [ ] previous/next view · t today · e add event"));
     return box;
   }
 
@@ -498,8 +562,8 @@ const NOTCH_CAL = (function () {
     const [h, m] = hm.split(":").map(Number);
     return h >= 23 ? "23:59" : `${String(h + 1).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
   }
-  function defaultStart() {
-    if (selected !== todayISO()) return "09:00";
+  function defaultStart(date) {
+    if (date !== todayISO()) return "09:00";
     const h = Number(googleTime.format(new Date()).slice(0, 2)) + 1;
     return h > 22 ? "22:00" : `${String(h).padStart(2, "0")}:00`;
   }
@@ -516,14 +580,14 @@ const NOTCH_CAL = (function () {
     document.getElementById("cal-ev-cancel").disabled = value;
   }
 
-  function googleStatusNow() {
-    const c = cached(gridRange(viewYear, viewMonth));
+  function googleStatusNow(date) {
+    const c = cached({ from: date, to: date });
     return c && c.data && c.data.google ? c.data.google.status : null;
   }
 
-  function openSheet(event = null) {
+  function openSheet(event = null, date = event?.date || selected) {
     if (saving || sheetOpen()) return;
-    const st = googleStatusNow();
+    const st = googleStatusNow(date);
     if (st === "not_configured") { showToast("Google isn't set up on the Worker yet"); return; }
     if (st === "not_connected") {
       if (confirm("Events are added to your Google Calendar. Connect Google now?")) connectGoogle();
@@ -532,9 +596,9 @@ const NOTCH_CAL = (function () {
     buildSheet();
     editing = event;
     document.getElementById("cal-ev-title").value = event ? event.title : "";
-    document.getElementById("cal-ev-date").value = event ? event.date : selected;
+    document.getElementById("cal-ev-date").value = date;
     const hasTimes = event && !event.allDay;
-    const start = hasTimes ? googleTime.format(new Date(event.start)) : defaultStart();
+    const start = hasTimes ? googleTime.format(new Date(event.start)) : defaultStart(date);
     document.getElementById("cal-ev-start").value = start;
     document.getElementById("cal-ev-end").value = hasTimes ? googleTime.format(new Date(event.end)) : plusHour(start);
     setTimed(!event || !event.allDay);
@@ -591,9 +655,12 @@ const NOTCH_CAL = (function () {
       updateEventCache(event?.id || ev?.id, ev);
       setSaving(false);
       closeSheet();
-      selected = ev?.date || date;
-      const d = parseISO(selected);
-      viewYear = d.getFullYear(); viewMonth = d.getMonth();
+      const savedDate = ev?.date || date;
+      if (view === "month" || savedDate < selected || savedDate > visibleEnd()) {
+        selected = savedDate;
+        const d = parseISO(selected);
+        viewYear = d.getFullYear(); viewMonth = d.getMonth();
+      }
       render();
       load(true);
       refreshAgenda();
@@ -612,6 +679,10 @@ const NOTCH_CAL = (function () {
       const t = new Date();
       viewYear = t.getFullYear();
       viewMonth = t.getMonth();
+      try {
+        const storedView = localStorage.getItem(VIEW_KEY);
+        if (Object.hasOwn(VIEWS, storedView)) view = storedView;
+      } catch {}
     }
     // 4.6.2 — re-entering the tab reuses the drawn month (a rebuild is a
     // visible e-ink refresh); load() rebuilds only if the data changed.
@@ -630,17 +701,10 @@ const NOTCH_CAL = (function () {
   }
   // 4.5 — keyboard (app.js routes keys here only while CALENDAR is showing).
   function goToday() {
-    const t = new Date();
-    viewYear = t.getFullYear(); viewMonth = t.getMonth(); selected = todayISO();
-    render(); load();
+    selectDate(todayISO());
   }
   function moveDay(n) {
-    selected = addDays(selected || todayISO(), n);
-    const d = parseISO(selected);
-    if (d.getMonth() !== viewMonth || d.getFullYear() !== viewYear) {
-      viewYear = d.getFullYear(); viewMonth = d.getMonth();
-      render(); load();
-    } else render();
+    selectDate(addDays(selected || todayISO(), n));
   }
   function sheetOpen() {
     const s = document.getElementById("cal-sheet");
@@ -648,8 +712,8 @@ const NOTCH_CAL = (function () {
   }
   return {
     init, refresh, goToday, moveDay, sheetOpen,
-    prevMonth: () => shiftMonth(-1),
-    nextMonth: () => shiftMonth(1),
+    prev: () => shiftView(-1),
+    next: () => shiftView(1),
     addEvent: () => openSheet(),
     closeSheet: () => closeSheet(),
   };
