@@ -9,7 +9,7 @@
 // return [] for both, which rendered a connection error over a real "No
 // open tasks" state. One-time fallback reads the old bare-array key.
 // 4.3.3 — shown on the date line so "which version am I on?" is answerable at a glance.
-const APP_BUILD = "v4.9.3";
+const APP_BUILD = "v4.9.4";
 const CACHE_KEY = "tasks-cache-v2";
 const LEGACY_CACHE_KEY = "tasks-cache-v1";
 const CFG_KEY = "tasks-cfg-v1";
@@ -1627,16 +1627,43 @@ async function boot() {
   // timeout lets journal.js (loaded after this file) finish defining itself.
   setTimeout(() => { if (typeof NOTCH_JOURNAL !== "undefined") NOTCH_JOURNAL.background(); }, 1500);
 
+  await refreshTasks();
+}
+
+// Installed windows can stay open across edits made in another browser.
+// Fetch on return and while visible, without replacing the user's view.
+const TASKS_REFRESH_MS = 60 * 1000;
+let tasksRefreshing = false;
+
+async function refreshTasks() {
+  if (tasksRefreshing || !getConfig()) return;
+  tasksRefreshing = true;
+  const cached = getCacheEntry();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
   try {
-    const { tasks } = await apiFetch("/api/tasks");
+    const { tasks } = await apiFetch("/api/tasks", { cache: "no-store", signal: controller.signal });
+    if (!Array.isArray(tasks)) throw new Error("Invalid task response");
     document.getElementById("offline-banner").classList.remove("show");
+    if (getCacheEntry()?.syncedAt !== cached?.syncedAt) {
+      // A confirmed local edit landed while the read was in flight.
+      setTimeout(refreshTasks, 0);
+      return;
+    }
+    if (cached && JSON.stringify(tasks) === JSON.stringify(cached.tasks)) return;
     setCache(tasks);
     const all = sortTasks(tasks);
-    applyAutoView(all); // fresh data may change the empty-view fallback verdict
-    syncQuickAddArea();
-    syncQuickAddDue();
+    const previousView = activeView;
+    applyAutoView(all);
+    if (previousView !== activeView) {
+      syncQuickAddArea();
+      syncQuickAddDue();
+    }
     renderChips(all);
     render(all);
+    if (activeTab === "calendar" && typeof NOTCH_CAL !== "undefined") {
+      NOTCH_CAL.init(document.getElementById("calendar-view"));
+    }
   } catch (e) {
     if (hasCacheMetadata()) {
       document.getElementById("offline-banner").classList.add("show");
@@ -1655,8 +1682,18 @@ async function boot() {
       err.textContent = "Can't reach the server. Check your connection or Worker URL.";
       list.appendChild(err);
     }
+  } finally {
+    clearTimeout(timeout);
+    tasksRefreshing = false;
   }
 }
+
+function refreshVisibleTasks() {
+  if (document.visibilityState === "visible") refreshTasks();
+}
+window.addEventListener("focus", refreshVisibleTasks);
+window.addEventListener("online", refreshVisibleTasks);
+setInterval(refreshVisibleTasks, TASKS_REFRESH_MS);
 
 // iOS keeps PWAs alive for hours — a "reopen" is often just a resume, not a
 // cold start. Re-resolve the clock-driven view on resume so Thursday-evening
@@ -1673,6 +1710,7 @@ async function boot() {
 let lastRenderedConcursusDate = null;
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible") return;
+  refreshVisibleTasks();
   // 4.0.2 safety net: sheet-open is `overflow: hidden` on <body>. If no
   // sheet is actually open, that class has no business being there —
   // clear it rather than leave the page silently unscrollable.
