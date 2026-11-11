@@ -107,8 +107,9 @@ and asks for the Worker URL + app key once, like any new browser.
 
 The CALENDAR tab shows Outlook (the Mac mirror, next 7 days) plus your own
 Google calendar (primary), and adds events to Google. Switch between the
-month grid and 7-day, 3-day, or single-day agendas. The shorter views start
-on the selected date and give each day its own add-event button.
+month grid, 7-day and 3-day time grids, and the single-day agenda. The time
+grids start on the selected date. Tap an empty slot to add an event at that
+time, or use the add button in each date header.
 Tap a one-off event you
 organize to edit its title, date, or time. Events with guests, recurring,
 multi-day and overnight events open in Google Calendar. The Worker holds the

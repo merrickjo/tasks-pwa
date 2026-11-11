@@ -234,7 +234,8 @@
 // v55 -> v56: 4.8 desktop workspace — sidebar + Today pane (index.html, app.js, journal.js, styles.css).
 // v56 -> v57: 4.9 projects (app.js, index.html, styles.css contents changed).
 // v57 -> v58: Google Calendar event editing and calendar views (4.9.2).
-const CACHE_NAME = "tasks-shell-v58";
+// v58 -> v59: 7-day and 3-day calendar time grids (4.9.3).
+const CACHE_NAME = "tasks-shell-v59";
 const SHELL = [
   "./",
   "./index.html",

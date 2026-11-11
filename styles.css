@@ -2234,9 +2234,147 @@ body.calendar-active .bottom-scrim {
 .cal-cell.selected { border-color: var(--ink); border-width: 1.5px; }
 .cal-cell.overdue .cal-marks { color: var(--overdue); font-weight: 700; }
 
+/* --- multi-day time grid --- */
+.cal-time-scroll {
+  --cal-axis-width: 46px;
+  --cal-column-min: 84px;
+  --cal-hour-height: 60px;
+  height: min(70dvh, 52rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-bottom: 1px solid var(--border);
+}
+.cal-time-week { --cal-column-min: 104px; }
+.cal-time-head,
+.cal-time-columns {
+  min-width: calc(var(--cal-axis-width) + var(--cal-days) * var(--cal-column-min));
+}
+.cal-time-columns {
+  display: grid;
+  grid-template-columns: var(--cal-axis-width) repeat(var(--cal-days), minmax(var(--cal-column-min), 1fr));
+}
+.cal-time-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--bg);
+}
+.cal-time-axis {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--bg);
+  color: var(--ink-soft);
+  text-align: center;
+  font: 11px var(--font-mono);
+}
+.cal-time-zone { display: grid; place-items: center; }
+.cal-time-date {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px;
+  min-height: 42px;
+  border-inline-start: 1px solid var(--border);
+  font: 12px var(--font-mono);
+}
+.cal-time-date-number {
+  font-weight: 700;
+  text-align: center;
+  min-width: 20px;
+  line-height: 22px;
+}
+.cal-time-date.today .cal-time-date-number {
+  background: var(--ink);
+  color: var(--bg);
+  border-radius: 4px;
+}
+.cal-time-add {
+  margin-inline-start: auto;
+  width: 26px;
+  min-height: 30px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px var(--font-mono);
+  cursor: pointer;
+}
+.cal-all-day {
+  border-block: 1px solid var(--border);
+}
+.cal-all-day-label { padding: 6px 2px; }
+.cal-all-day-cell {
+  max-height: 96px;
+  padding: 3px;
+  overflow: auto;
+  border-inline-start: 1px solid var(--border);
+}
+.cal-time-hour {
+  height: var(--cal-hour-height);
+  padding-top: 2px;
+  border-top: 1px solid var(--border);
+}
+.cal-time-day {
+  position: relative;
+  min-height: calc(24 * var(--cal-hour-height));
+  border-inline-start: 1px solid var(--border);
+  background-image: repeating-linear-gradient(
+    to bottom, var(--border) 0 1px, transparent 1px var(--cal-hour-height)
+  );
+  cursor: crosshair;
+}
+.cal-time-event,
+.cal-time-task {
+  display: block;
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  padding: 0 4px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-inline-start: 3px solid var(--ink);
+  border-radius: 3px;
+  background: var(--bg-subtle);
+  color: var(--ink);
+  font: 12px/1.15 var(--font-sans);
+  text-align: start;
+}
+.cal-time-event.work { border-inline-start-style: double; background: var(--bg); }
+.cal-time-event.cal-event-action,
+.cal-time-task { cursor: pointer; }
+.cal-time-event-title,
+.cal-time-event-when,
+.cal-time-task {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cal-time-event-title { font-weight: 700; }
+.cal-time-event-when { font: 10px var(--font-mono); color: var(--ink-soft); }
+.cal-all-day-cell > * { min-height: 20px; margin-bottom: 2px; }
+.cal-time-task { border-inline-start: 1px solid var(--border); background: var(--bg); }
+.cal-timed-event {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+.cal-timed-event .cal-time-event-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.cal-time-event:focus-visible,
+.cal-time-task:focus-visible { outline: 2px solid var(--ink); outline-offset: -3px; z-index: 1; }
+
 /* --- day log --- */
 .cal-agenda-days { touch-action: pan-y; }
-.cal-agenda-days .cal-day + .cal-day { border-top: 1px solid var(--border); }
 .cal-day-heading { margin: 0; font: inherit; }
 .cal-day-label {
   display: flex;

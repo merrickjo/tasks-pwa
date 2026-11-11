@@ -1,6 +1,6 @@
 // CALENDAR tab — 4.4 (21 Oct 2026)
 //
-// Month grid with the selected day's log, plus 7-day, 3-day and day agendas.
+// Month grid, 7-day and 3-day time grids, and a single-day agenda.
 // Two signifiers, straight from the paper method:
 //   ○  an event   (Outlook work meetings via the Mac mirror + Google, live)
 //   •  a task     (open Notch tasks due that day, from the Tasks cache)
@@ -27,6 +27,8 @@ const NOTCH_CAL = (function () {
     "July", "August", "September", "October", "November", "December"];
   const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"]; // Monday-first
   const CELL_LINES = 3;                   // entries shown per cell on desktop
+  const DAY_MINUTES = 24 * 60;
+  const INITIAL_GRID_HOUR = 7;
 
   let root = null;
   let viewYear, viewMonth;       // month on screen (month is 0-based)
@@ -63,9 +65,11 @@ const NOTCH_CAL = (function () {
 
   function dataRange() {
     const month = gridRange(viewYear, viewMonth);
-    if (view === "month" || !selected) return month;
+    if (view === "month" || view === "day" || !selected) return month;
     const end = visibleEnd();
-    return end > month.to ? { from: month.from, to: end } : month;
+    // Include the previous day so an overnight event can continue into the grid.
+    const previous = addDays(selected, -1);
+    return { from: previous < month.from ? previous : month.from, to: end > month.to ? end : month.to };
   }
 
   // ---------- cache ----------
@@ -173,6 +177,9 @@ const NOTCH_CAL = (function () {
     const entry = cached(range);
     const data = entry ? entry.data : null;
     const tmap = tasksByDate();
+    const previousGrid = root.querySelector(".cal-time-scroll");
+    const gridTop = previousGrid?.scrollTop;
+    const gridLeft = previousGrid?.dataset.start === selected ? previousGrid.scrollLeft : 0;
 
     root.innerHTML = "";
     root.appendChild(buildHeader(today));
@@ -181,18 +188,21 @@ const NOTCH_CAL = (function () {
     if (view === "month") {
       body.appendChild(buildGrid(range, data, tmap, today));
       body.appendChild(buildDayLog(selected, data, tmap, today));
-    } else {
+    } else if (view === "day") {
       const days = el("div", "cal-agenda-days");
-      for (let i = 0; i < VIEW_DAYS[view]; i++) {
-        const date = addDays(selected, i);
-        const dayData = data || cached({ from: date, to: date })?.data;
-        days.appendChild(buildDayLog(date, dayData, tmap, today));
-      }
+      days.appendChild(buildDayLog(selected, data, tmap, today));
       bindSwipe(days);
       body.appendChild(days);
+    } else {
+      body.appendChild(buildTimeGrid(data, tmap, today));
     }
     body.appendChild(buildSources(entry));
     root.appendChild(body);
+    const grid = body.querySelector(".cal-time-scroll");
+    if (grid) {
+      grid.scrollTop = gridTop ?? INITIAL_GRID_HOUR * 60;
+      grid.scrollLeft = gridLeft;
+    }
   }
 
   function kickerText() {
@@ -377,6 +387,122 @@ const NOTCH_CAL = (function () {
     return box;
   }
 
+  function minuteLabel(minute) {
+    const hour = String(Math.floor(minute / 60)).padStart(2, "0");
+    return hour + ":" + String(minute % 60).padStart(2, "0");
+  }
+
+  function timedBlocks(events, date) {
+    const midnight = Date.parse(date + "T00:00:00+07:00");
+    const blocks = [];
+    for (const event of events) {
+      if (event.allDay) continue;
+      const start = Math.max(0, (Date.parse(event.start) - midnight) / 60000);
+      const end = Math.min(DAY_MINUTES, (Date.parse(event.end) - midnight) / 60000);
+      if (end > start) blocks.push({ event, start, end });
+    }
+    blocks.sort((a, b) => a.start - b.start || b.end - a.end);
+
+    // A cluster shares its maximum lane count. Adjacent events can reuse a lane.
+    let cluster = [];
+    let laneEnds = [];
+    let clusterEnd = 0;
+    function finishCluster() {
+      for (const block of cluster) block.lanes = laneEnds.length;
+      cluster = [];
+      laneEnds = [];
+    }
+    for (const block of blocks) {
+      if (block.start >= clusterEnd) finishCluster();
+      block.lane = laneEnds.findIndex((end) => end <= block.start);
+      if (block.lane === -1) block.lane = laneEnds.length;
+      laneEnds[block.lane] = block.end;
+      cluster.push(block);
+      clusterEnd = Math.max(clusterEnd, block.end);
+    }
+    finishCluster();
+    return blocks;
+  }
+
+  function buildTimeGrid(data, tmap, today) {
+    const scroll = el("section", "cal-time-scroll cal-time-" + view);
+    scroll.setAttribute("aria-label", VIEWS[view] + " calendar time grid, Jakarta time");
+    scroll.tabIndex = 0;
+    scroll.dataset.start = selected;
+    scroll.style.setProperty("--cal-days", VIEW_DAYS[view]);
+    const head = el("div", "cal-time-head");
+    const dates = el("div", "cal-time-columns");
+    const allDay = el("div", "cal-time-columns cal-all-day");
+    const timeline = el("div", "cal-time-columns");
+    dates.appendChild(el("div", "cal-time-axis cal-time-zone", "WIB"));
+    allDay.appendChild(el("div", "cal-time-axis cal-all-day-label", "All day"));
+    const hours = el("div", "cal-time-axis cal-time-hours");
+    hours.setAttribute("aria-hidden", "true");
+    for (let hour = 0; hour < 24; hour++) hours.appendChild(el("div", "cal-time-hour", minuteLabel(hour * 60)));
+    timeline.appendChild(hours);
+
+    for (let i = 0; i < VIEW_DAYS[view]; i++) {
+      const date = addDays(selected, i);
+      const day = parseISO(date);
+      const label = day.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+      const dayHead = el("div", "cal-time-date");
+      if (date === today) dayHead.classList.add("today");
+      dayHead.appendChild(el("span", "cal-time-weekday", day.toLocaleDateString(undefined, { weekday: "short" })));
+      dayHead.appendChild(el("span", "cal-time-date-number", String(day.getDate())));
+      dayHead.appendChild(button("cal-time-add", "+", "Add an event on " + label, () => openSheet(null, date)));
+      dates.appendChild(dayHead);
+
+      const dayData = data || cached({ from: date, to: date })?.data;
+      const allDayCell = el("div", "cal-all-day-cell");
+      for (const event of eventsFor(dayData, date)) {
+        if (event.allDay) allDayCell.appendChild(timeEventCard(event, label));
+      }
+      for (const task of tmap[date] || []) {
+        const item = button("cal-time-task", "• " + task.title, "Edit task " + task.title, () => editCalendarTask(task));
+        item.title = task.title;
+        allDayCell.appendChild(item);
+      }
+      allDay.appendChild(allDayCell);
+
+      const column = el("div", "cal-time-day");
+      column.dataset.date = date;
+      column.setAttribute("role", "group");
+      column.setAttribute("aria-label", label);
+      const timed = [...(dayData?.outlook?.events || []), ...(dayData?.google?.events || [])];
+      for (const block of timedBlocks(timed, date)) {
+        const card = timeEventCard(block.event, label);
+        card.classList.add("cal-timed-event");
+        card.style.top = block.start + "px";
+        card.style.height = (block.end - block.start) + "px";
+        card.style.left = (100 * block.lane / block.lanes) + "%";
+        card.style.width = (100 / block.lanes) + "%";
+        column.appendChild(card);
+      }
+      column.addEventListener("click", (e) => {
+        if (e.target !== column) return;
+        const y = e.clientY - column.getBoundingClientRect().top;
+        const minute = Math.max(0, Math.min(DAY_MINUTES - 30, Math.floor(y / 30) * 30));
+        openSheet(null, date, minuteLabel(minute));
+      });
+      timeline.appendChild(column);
+    }
+    head.append(dates, allDay);
+    scroll.append(head, timeline);
+    return scroll;
+  }
+
+  function timeEventCard(event, label) {
+    const when = event.allDay ? "All day" :
+      googleTime.format(new Date(event.start)) + "–" + googleTime.format(new Date(event.end));
+    const card = eventAction(event, `${event.title}, ${label}, ${when}`);
+    card.classList.add("cal-time-event");
+    if (event.source === "outlook") card.classList.add("work");
+    card.title = `${event.title} · ${when} · ${event.source === "outlook" ? "Work" : "Google"}`;
+    card.appendChild(el("span", "cal-time-event-title", event.title));
+    if (!event.allDay) card.appendChild(el("span", "cal-time-event-when", when));
+    return card;
+  }
+
   function eventRow(e, now) {
     const row = el("div", "row agenda-row cal-ev");
     if (!e.allDay && Date.parse(e.end) <= now) row.classList.add("past");
@@ -384,22 +510,8 @@ const NOTCH_CAL = (function () {
     const time = el("div", "agenda-time", e.allDay ? "all day" : hhmm(e.start));
     if (!e.allDay) time.appendChild(el("span", null, hhmm(e.end)));
     row.appendChild(time);
-    const canEdit = e.source === "google" && e.id && e.editable;
-    const googleLink = e.source === "google" &&
-      /^https:\/\/(?:calendar\.google\.com\/|www\.google\.com\/calendar\/)/.test(e.htmlLink || "") ? e.htmlLink : "";
-    const body = el(canEdit ? "button" : googleLink ? "a" : "div", "row-body");
-    if (canEdit) {
-      body.type = "button";
-      body.classList.add("cal-event-action");
-      body.setAttribute("aria-label", `Edit ${e.title}`);
-      body.addEventListener("click", () => openSheet(e));
-    } else if (googleLink) {
-      body.classList.add("cal-event-action");
-      body.href = googleLink;
-      body.setAttribute("aria-label", `Open ${e.title} in Google Calendar`);
-    } else {
-      body.style.cursor = "default";
-    }
+    const body = eventAction(e);
+    body.classList.add("row-body");
     const title = el("span", "row-title");
     title.appendChild(el("span", "cal-sig", "○"));
     title.appendChild(document.createTextNode(e.title));
@@ -407,6 +519,31 @@ const NOTCH_CAL = (function () {
     row.appendChild(body);
     row.appendChild(el("div", "cal-src", e.source === "outlook" ? "work" : "google"));
     return row;
+  }
+
+  function eventAction(e, label = e.title) {
+    const canEdit = e.source === "google" && e.id && e.editable;
+    const googleLink = e.source === "google" &&
+      /^https:\/\/(?:calendar\.google\.com\/|www\.google\.com\/calendar\/)/.test(e.htmlLink || "") ? e.htmlLink : "";
+    const body = el(canEdit ? "button" : googleLink ? "a" : "div");
+    if (canEdit) {
+      body.type = "button";
+      body.classList.add("cal-event-action");
+      body.setAttribute("aria-label", `Edit ${label}`);
+      body.addEventListener("click", () => openSheet(e));
+    } else if (googleLink) {
+      body.classList.add("cal-event-action");
+      body.href = googleLink;
+      body.setAttribute("aria-label", `Open ${label} in Google Calendar`);
+    } else {
+      body.style.cursor = "default";
+    }
+    return body;
+  }
+
+  function editCalendarTask(task) {
+    setActiveTab("tasks");
+    openEditSheet(task, null);
   }
 
   function taskRow(t, today) {
@@ -419,11 +556,7 @@ const NOTCH_CAL = (function () {
     title.appendChild(document.createTextNode(t.title));
     body.appendChild(title);
     if (t.area) body.appendChild(el("div", "cal-task-meta", t.area));
-    body.addEventListener("click", () => {
-      // Tasks own their edit sheet — hop over and open it there.
-      setActiveTab("tasks");
-      openEditSheet(t, null);
-    });
+    body.addEventListener("click", () => editCalendarTask(t));
     row.appendChild(body);
     return row;
   }
@@ -585,7 +718,7 @@ const NOTCH_CAL = (function () {
     return c && c.data && c.data.google ? c.data.google.status : null;
   }
 
-  function openSheet(event = null, date = event?.date || selected) {
+  function openSheet(event = null, date = event?.date || selected, slot = null) {
     if (saving || sheetOpen()) return;
     const st = googleStatusNow(date);
     if (st === "not_configured") { showToast("Google isn't set up on the Worker yet"); return; }
@@ -598,7 +731,7 @@ const NOTCH_CAL = (function () {
     document.getElementById("cal-ev-title").value = event ? event.title : "";
     document.getElementById("cal-ev-date").value = date;
     const hasTimes = event && !event.allDay;
-    const start = hasTimes ? googleTime.format(new Date(event.start)) : defaultStart(date);
+    const start = hasTimes ? googleTime.format(new Date(event.start)) : slot || defaultStart(date);
     document.getElementById("cal-ev-start").value = start;
     document.getElementById("cal-ev-end").value = hasTimes ? googleTime.format(new Date(event.end)) : plusHour(start);
     setTimed(!event || !event.allDay);
