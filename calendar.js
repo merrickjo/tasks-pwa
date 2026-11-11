@@ -32,6 +32,11 @@ const NOTCH_CAL = (function () {
   let loadError = null;
   let sheetBuilt = false;
   let saving = false;
+  let editing = null;
+  let calendarRevision = 0;
+  const googleTime = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  });
 
   // ---------- dates (device-local, never toISOString) ----------
   function iso(y, m, d) { return localISO(new Date(y, m, d)); }
@@ -63,11 +68,17 @@ const NOTCH_CAL = (function () {
     keys.slice(CACHE_MAX).forEach((k) => delete all[k]);
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(all)); } catch {}
   }
-  function patchCache(range, fn) {
-    const c = cached(range);
-    if (!c) return;
-    fn(c.data);
-    writeCache(range, c.data);
+  function updateEventCache(id, event) {
+    calendarRevision++;
+    const all = readCache();
+    for (const [key, entry] of Object.entries(all)) {
+      const google = entry.data?.google;
+      if (!google) continue;
+      const [from, to] = key.split("|");
+      google.events = google.events.filter((e) => e.id !== id);
+      if (event && event.date >= from && event.date <= to) google.events.push(event);
+    }
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(all)); } catch {}
   }
 
   // ---------- data ----------
@@ -92,7 +103,9 @@ const NOTCH_CAL = (function () {
   async function load(force) {
     const range = gridRange(viewYear, viewMonth);
     const c = cached(range);
-    if (!force && c && Date.now() - c.fetchedAt < REFETCH_MS) return;
+    if (!force && c && Date.now() - c.fetchedAt < REFETCH_MS &&
+        c.data.google?.events.every((e) => typeof e.editable === "boolean")) return;
+    const revision = calendarRevision;
     // 4.6.2 — on e-ink a rebuild is a visible full refresh: show "syncing…"
     // by editing the kicker in place, and rebuild afterwards only if the
     // month actually changed (or there was nothing on screen yet).
@@ -103,11 +116,12 @@ const NOTCH_CAL = (function () {
     let changed = !c;
     try {
       const data = await apiFetch(`/api/calendar?from=${range.from}&to=${range.to}`);
+      if (revision !== calendarRevision) return;
       writeCache(range, data);
       loadError = null;
       changed = changed || JSON.stringify(data) !== before;
     } catch (e) {
-      loadError = String((e && e.message) || e).replace("request failed: ", "HTTP ");
+      if (revision === calendarRevision) loadError = String((e && e.message) || e).replace("request failed: ", "HTTP ");
     } finally {
       loading = false;
       if (loadError !== prevError) changed = true;
@@ -306,18 +320,28 @@ const NOTCH_CAL = (function () {
     const time = el("div", "agenda-time", e.allDay ? "all day" : hhmm(e.start));
     if (!e.allDay) time.appendChild(el("span", null, hhmm(e.end)));
     row.appendChild(time);
-    const body = el("div", "row-body");
-    const title = el("div", "row-title");
+    const canEdit = e.source === "google" && e.id && e.editable;
+    const googleLink = e.source === "google" &&
+      /^https:\/\/(?:calendar\.google\.com\/|www\.google\.com\/calendar\/)/.test(e.htmlLink || "") ? e.htmlLink : "";
+    const body = el(canEdit ? "button" : googleLink ? "a" : "div", "row-body");
+    if (canEdit) {
+      body.type = "button";
+      body.classList.add("cal-event-action");
+      body.setAttribute("aria-label", `Edit ${e.title}`);
+      body.addEventListener("click", () => openSheet(e));
+    } else if (googleLink) {
+      body.classList.add("cal-event-action");
+      body.href = googleLink;
+      body.setAttribute("aria-label", `Open ${e.title} in Google Calendar`);
+    } else {
+      body.style.cursor = "default";
+    }
+    const title = el("span", "row-title");
     title.appendChild(el("span", "cal-sig", "○"));
     title.appendChild(document.createTextNode(e.title));
     body.appendChild(title);
     row.appendChild(body);
     row.appendChild(el("div", "cal-src", e.source === "outlook" ? "work" : "google"));
-    if (e.source === "google" && e.id) {
-      body.addEventListener("click", () => deleteEvent(e));
-    } else {
-      body.style.cursor = "default";
-    }
     return row;
   }
 
@@ -354,7 +378,7 @@ const NOTCH_CAL = (function () {
     if (!g) {
       gline.appendChild(el("span", null, "GOOGLE · —"));
     } else if (g.status === "connected") {
-      gline.appendChild(el("span", null, "GOOGLE · connected · tap an event to delete it"));
+      gline.appendChild(el("span", null, "GOOGLE · connected"));
       gline.appendChild(button("cal-link-btn", "Disconnect", "Disconnect Google Calendar", disconnectGoogle));
     } else if (g.status === "not_connected") {
       gline.appendChild(el("span", null, "GOOGLE · not connected"));
@@ -391,16 +415,23 @@ const NOTCH_CAL = (function () {
     } catch { showToast("Couldn't disconnect"); }
     load(true);
   }
-  async function deleteEvent(e) {
-    if (!confirm(`Delete "${e.title}" from Google Calendar?`)) return;
+  async function deleteEvent() {
+    const e = editing;
+    if (saving || !e || !confirm(`Delete "${e.title}" from Google Calendar?`)) return;
+    setSaving(true);
+    msg("Deleting…");
     try {
       await apiFetch(`/api/calendar/events/${encodeURIComponent(e.id)}`, { method: "DELETE" });
-      patchCache(gridRange(viewYear, viewMonth), (d) => { d.google.events = d.google.events.filter((x) => x.id !== e.id); });
+      updateEventCache(e.id, null);
+      setSaving(false);
+      closeSheet();
       showToast("Deleted");
       render();
-    } catch (err) {
-      showToast("Couldn't delete");
       load(true);
+      refreshAgenda();
+    } catch (err) {
+      setSaving(false);
+      msg(err.detail || "Couldn't delete the event. Try again.", true);
     }
   }
 
@@ -420,10 +451,10 @@ const NOTCH_CAL = (function () {
     sheet.innerHTML = `
       <div class="edit-sheet-handle"></div>
       <div class="edit-sheet-body">
-        <input type="text" id="cal-ev-title" class="edit-title-input" placeholder="Event title" maxlength="200" autocomplete="off">
-        <div class="edit-field-label">Date</div>
+        <input type="text" id="cal-ev-title" class="edit-title-input" aria-label="Event title" placeholder="Event title" maxlength="200" autocomplete="off">
+        <label class="edit-field-label" for="cal-ev-date">Date</label>
         <input type="date" id="cal-ev-date" class="edit-select cal-input">
-        <div class="edit-field-label">Time</div>
+        <div class="edit-field-label">Time · WIB</div>
         <div class="capture-due cal-time-chips">
           <button type="button" class="due-chip" id="cal-ev-allday">All day</button>
           <button type="button" class="due-chip" id="cal-ev-timed">Timed</button>
@@ -433,16 +464,18 @@ const NOTCH_CAL = (function () {
           <span class="cal-time-sep">–</span>
           <input type="time" id="cal-ev-end" class="edit-select cal-input" aria-label="End time">
         </div>
-        <div class="edit-sheet-msg" id="cal-ev-msg"></div>
+        <div class="edit-sheet-msg" id="cal-ev-msg" role="status"></div>
         <div class="edit-sheet-actions">
           <button type="button" id="cal-ev-cancel" class="edit-btn edit-btn-cancel">Cancel</button>
           <button type="button" id="cal-ev-save" class="edit-btn edit-btn-save">Add to Google</button>
         </div>
+        <button type="button" id="cal-ev-delete" class="cal-link-btn cal-event-delete" hidden>Delete event</button>
       </div>`;
     document.body.appendChild(backdrop);
     document.body.appendChild(sheet);
     document.getElementById("cal-ev-cancel").addEventListener("click", closeSheet);
     document.getElementById("cal-ev-save").addEventListener("click", saveEvent);
+    document.getElementById("cal-ev-delete").addEventListener("click", deleteEvent);
     document.getElementById("cal-ev-allday").addEventListener("click", () => setTimed(false));
     document.getElementById("cal-ev-timed").addEventListener("click", () => setTimed(true));
     document.getElementById("cal-ev-title").addEventListener("keydown", (e) => { if (e.key === "Enter") saveEvent(); });
@@ -457,6 +490,8 @@ const NOTCH_CAL = (function () {
     timed = v;
     document.getElementById("cal-ev-allday").classList.toggle("active", !v);
     document.getElementById("cal-ev-timed").classList.toggle("active", v);
+    document.getElementById("cal-ev-allday").setAttribute("aria-pressed", String(!v));
+    document.getElementById("cal-ev-timed").setAttribute("aria-pressed", String(v));
     document.getElementById("cal-ev-times").style.display = v ? "flex" : "none";
   }
   function plusHour(hm) {
@@ -465,7 +500,7 @@ const NOTCH_CAL = (function () {
   }
   function defaultStart() {
     if (selected !== todayISO()) return "09:00";
-    const h = new Date().getHours() + 1;
+    const h = Number(googleTime.format(new Date()).slice(0, 2)) + 1;
     return h > 22 ? "22:00" : `${String(h).padStart(2, "0")}:00`;
   }
   function msg(text, isError) {
@@ -474,12 +509,20 @@ const NOTCH_CAL = (function () {
     m.classList.toggle("error", !!isError);
   }
 
+  function setSaving(value) {
+    saving = value;
+    document.getElementById("cal-ev-save").disabled = value;
+    document.getElementById("cal-ev-delete").disabled = value;
+    document.getElementById("cal-ev-cancel").disabled = value;
+  }
+
   function googleStatusNow() {
     const c = cached(gridRange(viewYear, viewMonth));
     return c && c.data && c.data.google ? c.data.google.status : null;
   }
 
-  function openSheet() {
+  function openSheet(event = null) {
+    if (saving || sheetOpen()) return;
     const st = googleStatusNow();
     if (st === "not_configured") { showToast("Google isn't set up on the Worker yet"); return; }
     if (st === "not_connected") {
@@ -487,22 +530,28 @@ const NOTCH_CAL = (function () {
       return;
     }
     buildSheet();
-    saving = false;
-    document.getElementById("cal-ev-title").value = "";
-    document.getElementById("cal-ev-date").value = selected;
-    const s = defaultStart();
-    document.getElementById("cal-ev-start").value = s;
-    document.getElementById("cal-ev-end").value = plusHour(s);
-    setTimed(true);
+    editing = event;
+    document.getElementById("cal-ev-title").value = event ? event.title : "";
+    document.getElementById("cal-ev-date").value = event ? event.date : selected;
+    const hasTimes = event && !event.allDay;
+    const start = hasTimes ? googleTime.format(new Date(event.start)) : defaultStart();
+    document.getElementById("cal-ev-start").value = start;
+    document.getElementById("cal-ev-end").value = hasTimes ? googleTime.format(new Date(event.end)) : plusHour(start);
+    setTimed(!event || !event.allDay);
     msg("");
-    document.getElementById("cal-ev-save").disabled = false;
+    setSaving(false);
+    document.getElementById("cal-ev-save").textContent = event ? "Save changes" : "Add to Google";
+    document.getElementById("cal-ev-delete").hidden = !event;
     document.body.classList.add("sheet-open");
     document.getElementById("cal-backdrop").classList.add("show");
     const sheet = document.getElementById("cal-sheet");
+    sheet.setAttribute("aria-label", event ? "Edit Google event" : "Add event");
     sheet.classList.add("show");
     sheet.focus(); // not the title — see openEditSheet() in app.js on iOS taps
   }
   function closeSheet() {
+    if (saving || !sheetOpen()) return;
+    editing = null;
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     document.body.classList.remove("sheet-open");
     const b = document.getElementById("cal-backdrop");
@@ -520,33 +569,39 @@ const NOTCH_CAL = (function () {
     if (!title) { msg("Give it a title.", true); return; }
     if (!date) { msg("Pick a date.", true); return; }
     if (timed && (!start || !end || end <= start)) { msg("End must be after start.", true); return; }
-    saving = true;
-    document.getElementById("cal-ev-save").disabled = true;
-    msg("Adding…");
+    const event = editing;
+    const changedTime = !event || date !== event.date || timed === event.allDay ||
+      (timed && (start !== googleTime.format(new Date(event.start)) || end !== googleTime.format(new Date(event.end))));
+    if (event && !changedTime && title === event.title) { closeSheet(); return; }
+    const body = {};
+    if (!event || title !== event.title) body.title = title;
+    if (changedTime) {
+      body.date = date;
+      if (timed) Object.assign(body, { start, end });
+    }
+    if (event?.etag) body.etag = event.etag;
+    setSaving(true);
+    msg(event ? "Saving…" : "Adding…");
     try {
-      const ev = await apiFetch("/api/calendar/events", {
-        method: "POST",
-        body: JSON.stringify(timed ? { title, date, start, end } : { title, date }),
+      const path = "/api/calendar/events" + (event ? "/" + encodeURIComponent(event.id) : "");
+      const ev = await apiFetch(path, {
+        method: event ? "PATCH" : "POST",
+        body: JSON.stringify(body),
       });
-      // Confirm-then-render (same rule as task edits): the event shows up
-      // only after Google has it.
-      const range = gridRange(viewYear, viewMonth);
-      if (ev && date >= range.from && date <= range.to) {
-        patchCache(range, (d) => { d.google.events.push(ev); });
-      }
+      updateEventCache(event?.id || ev?.id, ev);
+      setSaving(false);
       closeSheet();
-      selected = date;
-      const d = parseISO(date);
-      if (d.getMonth() !== viewMonth || d.getFullYear() !== viewYear) {
-        viewYear = d.getFullYear(); viewMonth = d.getMonth();
-        load(true);
-      }
+      selected = ev?.date || date;
+      const d = parseISO(selected);
+      viewYear = d.getFullYear(); viewMonth = d.getMonth();
       render();
-      showToast("Added to Google Calendar");
+      load(true);
+      refreshAgenda();
+      showToast(event ? "Saved to Google Calendar" : "Added to Google Calendar");
     } catch (e) {
-      saving = false;
-      document.getElementById("cal-ev-save").disabled = false;
-      msg("Couldn't add it — " + String((e && e.message) || e).replace("request failed: ", "HTTP "), true);
+      setSaving(false);
+      msg(e.detail || (event ? "Couldn't save changes. Try again." : "Couldn't add the event. Try again."), true);
+      if (e.code === "event_changed" || e.code === "not_found" || e.code === "not_connected") load(true);
     }
   }
 

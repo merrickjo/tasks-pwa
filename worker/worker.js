@@ -1,5 +1,6 @@
 // Tasks API — Cloudflare Worker + D1
 //
+// v12.1: edit one-off Google Calendar events.
 // v12 (3 Nov 2026): + projects. Tasks carry `projectId` (the project's
 //   uuid, same id as the `id` property on the Obsidian project note).
 //   /api/projects (list, create), /api/projects/:id (edit), and
@@ -711,6 +712,7 @@ async function googleApi(env, path, init = {}) {
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg = (body.error && body.error.message) || `HTTP ${res.status}`;
+    if (res.status === 412) throw gError("event_changed", "This event changed in Google Calendar. Reopen it and try again.");
     throw gError(res.status === 404 || res.status === 410 ? "not_found" : "google_error", `Google: ${msg}`);
   }
   return body;
@@ -720,6 +722,15 @@ function addDaysISO(iso, n) {
   const d = new Date(iso + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+function editableGoogleEvent(g) {
+  if (!g.organizer?.self || g.locked || g.recurringEventId || g.recurrence?.length ||
+      g.attendees?.some((attendee) => !attendee.self) || (g.eventType && g.eventType !== "default")) return false;
+  if (g.start?.date) return g.end?.date === addDaysISO(g.start.date, 1);
+  const start = g.start?.dateTime;
+  const end = g.end?.dateTime;
+  return !!(start && end && jakartaDateOf(start) === jakartaDateOf(end));
 }
 
 // Google event -> one row per day it touches (all-day spans are expanded so a
@@ -734,7 +745,11 @@ function mapGoogleEvent(g, from, to) {
   const start = allDay ? g.start.date : g.start && g.start.dateTime;
   const end = allDay ? g.end.date : (g.end && g.end.dateTime) || start;
   if (!start) return [];
-  const base = { id: g.id, title: (g.summary || "").trim().slice(0, 200) || "(no title)", start, end, allDay, source: "google" };
+  const base = {
+    id: g.id, title: (g.summary || "").trim().slice(0, 200) || "(no title)",
+    start, end, allDay, source: "google", editable: editableGoogleEvent(g),
+    etag: g.etag, htmlLink: g.htmlLink,
+  };
   if (!allDay) {
     const date = jakartaDateOf(start);
     return date >= from && date <= to ? [{ ...base, date }] : [];
@@ -754,7 +769,7 @@ async function googleEventsInRange(env, from, to) {
     orderBy: "startTime",
     maxResults: "500",
     timeZone: TZ,
-    fields: "items(id,status,summary,start,end,eventType,attendees(self,responseStatus))",
+    fields: "items(id,status,summary,start,end,eventType,attendees(self,responseStatus),organizer(self),locked,recurringEventId,recurrence,etag,htmlLink)",
   });
   const body = await googleApi(env, "?" + q.toString());
   return (body.items || []).flatMap((g) => mapGoogleEvent(g, from, to));
@@ -800,29 +815,61 @@ async function calendarRange(env, from, to) {
   return { from, to, outlook, google };
 }
 
+function validateEventTitle(value) {
+  const title = typeof value === "string" ? value.trim() : "";
+  if (!title || title.length > 200) throw validationError("title", "title must be 1–200 characters");
+  return title;
+}
+
 function validateNewEvent(input) {
   if (!input || typeof input !== "object") throw validationError("body", "request body must be a JSON object");
-  const title = typeof input.title === "string" ? input.title.trim() : "";
-  if (!title || title.length > 200) throw validationError("title", "title must be 1–200 characters");
-  if (!DATE_RE.test(input.date || "")) throw validationError("date", "date must be YYYY-MM-DD");
+  return { title: validateEventTitle(input.title), ...validateEventSchedule(input) };
+}
+
+function validateEventSchedule(input) {
+  const date = Date.parse(`${input.date}T00:00:00Z`);
+  if (!DATE_RE.test(input.date || "") || !Number.isFinite(date) || new Date(date).toISOString().slice(0, 10) !== input.date) {
+    throw validationError("date", "date must be a valid YYYY-MM-DD");
+  }
   const timed = input.start !== undefined && input.start !== null && input.start !== "";
-  if (!timed) return { title, date: input.date, allDay: true };
+  if (!timed) return { date: input.date, allDay: true };
   if (!TIME_RE.test(input.start)) throw validationError("start", "start must be HH:MM");
   if (!TIME_RE.test(input.end || "")) throw validationError("end", "end must be HH:MM");
   if (input.end <= input.start) throw validationError("end", "end must be after start");
-  return { title, date: input.date, allDay: false, start: input.start, end: input.end };
+  return { date: input.date, allDay: false, start: input.start, end: input.end };
 }
 
-async function createGoogleEvent(env, ev) {
-  const body = ev.allDay
-    ? { summary: ev.title, start: { date: ev.date }, end: { date: addDaysISO(ev.date, 1) } }
+function googleEventTimes(ev) {
+  return ev.allDay
+    ? { start: { date: ev.date }, end: { date: addDaysISO(ev.date, 1) } }
     : {
-        summary: ev.title,
         start: { dateTime: `${ev.date}T${ev.start}:00`, timeZone: TZ },
         end: { dateTime: `${ev.date}T${ev.end}:00`, timeZone: TZ },
       };
+}
+
+async function createGoogleEvent(env, ev) {
+  const body = { summary: ev.title, ...googleEventTimes(ev) };
   const g = await googleApi(env, "", { method: "POST", body: JSON.stringify(body) });
   return mapGoogleEvent(g, ev.date, ev.date)[0] || null;
+}
+
+async function updateGoogleEvent(env, id, input) {
+  if (!input || typeof input !== "object") throw validationError("body", "request body must be a JSON object");
+  const body = {};
+  if (input.title !== undefined) body.summary = validateEventTitle(input.title);
+  if (input.date !== undefined) Object.assign(body, googleEventTimes(validateEventSchedule(input)));
+  if (!Object.keys(body).length) throw validationError("body", "Provide an event title or schedule");
+  const path = "/" + encodeURIComponent(id);
+  const existing = await googleApi(env, path);
+  if (!editableGoogleEvent(existing)) throw gError("use_google", "Edit this event in Google Calendar");
+  if (input.etag && input.etag !== existing.etag) throw gError("event_changed", "This event changed in Google Calendar. Reopen it and try again.");
+  const g = await googleApi(env, path, {
+    method: "PATCH", body: JSON.stringify(body),
+    headers: existing.etag ? { "if-match": existing.etag } : {},
+  });
+  const date = g.start.date || jakartaDateOf(g.start.dateTime);
+  return mapGoogleEvent(g, date, date)[0] || null;
 }
 
 // The Tasks tab's AGENDA · TODAY: Outlook mirror + Google, one list.
@@ -837,7 +884,8 @@ async function agendaForDay(env, date) {
 
 function gErrorResponse(e, env) {
   if (e.gcode === "not_configured" || e.gcode === "not_connected") return json({ error: e.message, code: e.gcode }, 409, env);
-  if (e.gcode === "not_found") return json({ error: e.message, code: e.gcode }, 404, env);
+  if (e.gcode === "use_google" || e.gcode === "event_changed") return json({ error: e.message, code: e.gcode }, 409, env);
+  if (e.gcode === "not_found") return json({ error: "This event is no longer on your Google Calendar.", code: e.gcode }, 404, env);
   if (e.gcode) return json({ error: e.message, code: e.gcode }, 502, env);
   return null;
 }
@@ -906,6 +954,15 @@ export async function handle(request, env) {
       catch (e) { if (e.isValidation) return json({ error: e.message, field: e.field }, 400, env); throw e; }
       try { return json(await createGoogleEvent(env, ev), 201, env); }
       catch (e) { const r = gErrorResponse(e, env); if (r) return r; throw e; }
+    }
+    if (parts[0] === "api" && parts[1] === "calendar" && parts[2] === "events" && parts[3] && !parts[4] && request.method === "PATCH") {
+      if (!/^[A-Za-z0-9_-]{1,1024}$/.test(parts[3])) return json({ error: "bad event id", field: "id" }, 400, env);
+      const input = await readJson(request);
+      try { return json(await updateGoogleEvent(env, parts[3], input), 200, env); }
+      catch (e) {
+        if (e.isValidation) return json({ error: e.message, field: e.field }, 400, env);
+        const r = gErrorResponse(e, env); if (r) return r; throw e;
+      }
     }
     if (parts[0] === "api" && parts[1] === "calendar" && parts[2] === "events" && parts[3] && !parts[4] && request.method === "DELETE") {
       if (!/^[A-Za-z0-9_-]{1,1024}$/.test(parts[3])) return json({ error: "bad event id", field: "id" }, 400, env);

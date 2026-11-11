@@ -233,7 +233,8 @@
 // v54 -> v55: 4.7 journal ↔ Tasks/Calendar (send • and ○ lines, scheduled lines, × on done).
 // v55 -> v56: 4.8 desktop workspace — sidebar + Today pane (index.html, app.js, journal.js, styles.css).
 // v56 -> v57: 4.9 projects (app.js, index.html, styles.css contents changed).
-const CACHE_NAME = "tasks-shell-v57";
+// v57 -> v58: 4.9.1 Google Calendar event editing.
+const CACHE_NAME = "tasks-shell-v58";
 const SHELL = [
   "./",
   "./index.html",

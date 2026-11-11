@@ -980,6 +980,17 @@ body.sheet-open { overflow: hidden; }
 .edit-btn-save:disabled { opacity: 0.4; cursor: default; }
 
 .row-body { cursor: pointer; }
+.cal-event-action {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  text-decoration: none;
+}
+.cal-event-delete { margin-top: var(--s-3); }
 
 /* movement feedback toast ("Saved · moved out of Workday") */
 .toast {
