@@ -341,6 +341,12 @@ body {
   cursor: pointer;
 }
 .tasks-refresh:disabled { opacity: 0.5; cursor: wait; }
+.tasks-sync-status {
+  margin: var(--s-1) 0 0;
+  color: var(--ink-soft);
+  font: 11px var(--font-mono);
+  text-align: end;
+}
 
 /* --- area filter chips --- */
 .chips {

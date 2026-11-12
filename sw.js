@@ -237,7 +237,8 @@
 // v58 -> v59: 7-day and 3-day calendar time grids (4.9.3).
 // v59 -> v60: refresh tasks in open and resumed app windows (4.9.4).
 // v60 -> v61: manual task refresh (4.9.5).
-const CACHE_NAME = "tasks-shell-v61";
+// v61 -> v62: last successful task sync time (4.9.6).
+const CACHE_NAME = "tasks-shell-v62";
 const SHELL = [
   "./",
   "./index.html",

@@ -9,7 +9,7 @@
 // return [] for both, which rendered a connection error over a real "No
 // open tasks" state. One-time fallback reads the old bare-array key.
 // 4.3.3 — shown on the date line so "which version am I on?" is answerable at a glance.
-const APP_BUILD = "v4.9.5";
+const APP_BUILD = "v4.9.6";
 const CACHE_KEY = "tasks-cache-v2";
 const LEGACY_CACHE_KEY = "tasks-cache-v1";
 const CFG_KEY = "tasks-cfg-v1";
@@ -1285,7 +1285,10 @@ function getCache() {
   const entry = getCacheEntry();
   return entry ? entry.tasks : [];
 }
-function setCache(tasks) { setCacheEntry({ syncedAt: new Date().toISOString(), tasks }); }
+// Local task writes advance the cache revision but preserve the last full fetch time.
+function setCache(tasks, fetchedAt = getCacheEntry()?.fetchedAt ?? null) {
+  setCacheEntry({ syncedAt: new Date().toISOString(), fetchedAt, tasks });
+}
 
 // BUG-04: due-state bucket first (overdue → today → upcoming → undated),
 // then due date, then priority P1→P4, then title as a stable tie-break.
@@ -1611,6 +1614,7 @@ document.getElementById("edit-save").addEventListener("click", saveEdit);
 
 // --- boot ---
 async function boot() {
+  renderTaskSyncStatus("checking");
   const cached = sortTasks(getCache());
   applyAutoView(cached);
   syncQuickAddArea();
@@ -1635,6 +1639,30 @@ async function boot() {
 const TASKS_REFRESH_MS = 60 * 1000;
 let tasksRefresh = null;
 
+function renderTaskSyncStatus(state) {
+  const cached = getCacheEntry();
+  const status = document.getElementById("tasks-sync-status");
+  const showCached = state === "failed" && !!cached;
+  document.getElementById("offline-banner")?.classList.toggle("show", showCached && !status);
+  if (!status) return;
+
+  const date = new Date(cached?.fetchedAt || NaN);
+  const day = Number.isNaN(date.getTime()) ? "" : localISO(date);
+  const stamp = day ? (day === todayISO() ? "" :
+    shortDateLabel(day, date.getFullYear() !== new Date().getFullYear()) + ", ") + hhmm(date) : "";
+  const message = state === "success" ? "Synced at " + stamp :
+    stamp ? "Showing tasks from " + stamp :
+    showCached ? "Showing cached tasks · sync time unknown" :
+    state === "failed" ? "Couldn't sync tasks" : "Checking tasks…";
+  if (status.textContent !== message) status.textContent = message;
+  const button = document.getElementById("tasks-refresh");
+  if (button) {
+    const retry = state === "failed";
+    button.textContent = retry ? "Retry" : "Refresh";
+    button.setAttribute("aria-label", retry ? "Retry task sync" : "Refresh tasks");
+  }
+}
+
 function refreshTasks() {
   if (!getConfig()) return Promise.resolve(false);
   tasksRefresh ??= fetchTasks().finally(() => { tasksRefresh = null; });
@@ -1648,13 +1676,16 @@ async function fetchTasks() {
   try {
     const { tasks } = await apiFetch("/api/tasks", { cache: "no-store", signal: controller.signal });
     if (!Array.isArray(tasks)) throw new Error("Invalid task response");
-    document.getElementById("offline-banner").classList.remove("show");
     if (getCacheEntry()?.syncedAt !== cached?.syncedAt) {
       // A confirmed local edit landed while the read was in flight.
       return fetchTasks();
     }
-    if (cached && JSON.stringify(tasks) === JSON.stringify(cached.tasks)) return true;
-    setCache(tasks);
+    const unchanged = cached && JSON.stringify(tasks) === JSON.stringify(cached.tasks);
+    const fetchedAt = new Date().toISOString();
+    if (unchanged) setCacheEntry({ ...cached, fetchedAt });
+    else setCache(tasks, fetchedAt);
+    renderTaskSyncStatus("success");
+    if (unchanged) return true;
     const all = sortTasks(tasks);
     const previousView = activeView;
     applyAutoView(all);
@@ -1669,9 +1700,8 @@ async function fetchTasks() {
     }
     return true;
   } catch (e) {
-    if (hasCacheMetadata()) {
-      document.getElementById("offline-banner").classList.add("show");
-    } else {
+    renderTaskSyncStatus("failed");
+    if (!hasCacheMetadata()) {
       // Phase 3 req 11 -- CONCURSUS is pure localStorage and works fully
       // offline even on a first-ever launch with zero synced task cache.
       // Render its ring/group before the "can't reach server" message
